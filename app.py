@@ -5,12 +5,11 @@ from PIL import Image
 import io
 import google.generativeai as genai
 from concurrent.futures import ThreadPoolExecutor
-from fpdf import FPDF
 
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.9.1 - Correção Estável de Exportação PDF")
+st.subheader("Protótipo 0.9.4 - Otimizado (Sem PDF)")
 
 # --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL ---
 @st.cache_data(ttl=3600)
@@ -210,44 +209,6 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- GERADOR DE PDF DO RELATÓRIO (PROTEGIDO CONTRA ERROS DE LAYOUT) ---
-def generate_pdf_report(title_text, content_text):
-    """Gera um PDF limpo e formatado usando FPDF2 com quebra segura de texto."""
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    
-    # Cabeçalho
-    pdf.set_font("Helvetica", "B", 15)
-    pdf.cell(0, 10, "MTG Commander Assistant - Relatorio", ln=True, align="C")
-    pdf.set_font("Helvetica", "I", 9)
-    pdf.cell(0, 6, f"Foco: {title_text}", ln=True, align="C")
-    pdf.ln(8)
-    
-    # Corpo do texto
-    pdf.set_font("Helvetica", "", 10)
-    
-    clean_text = content_text.encode('latin-1', 'replace').decode('latin-1')
-    
-    for line in clean_text.split('\n'):
-        line_clean = line.replace('#', '').replace('**', '').strip()
-        if not line_clean:
-            pdf.ln(3)
-            continue
-            
-        # Garante que linhas longas ou com pipes de tabelas Markdown sejam quebradas adequadamente
-        if line.startswith("### "):
-            pdf.ln(3)
-            pdf.set_font("Helvetica", "B", 11)
-            pdf.multi_cell(0, 6, line_clean.replace("### ", ""))
-            pdf.set_font("Helvetica", "", 10)
-        elif line.startswith("- ") or line.startswith("* "):
-            pdf.multi_cell(0, 5, "  * " + line_clean[2:])
-        else:
-            pdf.multi_cell(0, 5, line_clean)
-            
-    return bytes(pdf.output())
-
 # --- BARRA LATERAL (CONFIGURAÇÕES E COMANDANTE / DUPLA DE COMANDANTES) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
@@ -348,12 +309,16 @@ if uploaded_files:
                 
                 raw_text = call_gemini_api(api_key, prompt, optimized_img)
                 
-                if "```" in raw_text:
-                    parts = raw_text.split("```")
+                backticks_marker = "\x60\x60\x60"
+                if backticks_marker in raw_text:
+                    parts = raw_text.split(backticks_marker)
                     for part in parts:
                         clean_part = part.strip()
-                        if clean_part.startswith("json"): clean_part = clean_part[4:].strip()
-                        if clean_part.startswith("["): raw_text = clean_part; break
+                        if clean_part.startswith("json"):
+                            clean_part = clean_part[4:].strip()
+                        if clean_part.startswith("["):
+                            raw_text = clean_part
+                            break
                 
                 cards_list = json.loads(raw_text)
                 for item in cards_list:
@@ -513,16 +478,6 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                 except Exception as e:
                     st.error(f"Erro no processamento: {e}")
 
-        # Botão de Exportar Relatório de Sinergias em PDF
-        if 'last_synergy_analysis' in st.session_state:
-            pdf_bytes = generate_pdf_report("Analise de Sinergias Cruzadas", st.session_state['last_synergy_analysis'])
-            st.download_button(
-                label="📥 Baixar Relatório de Sinergias (PDF)",
-                data=pdf_bytes,
-                file_name="mtg_sinergias_fichario.pdf",
-                mime="application/pdf"
-            )
-
         # --- MÓDULO DE UPGRADE DE DECK PRONTO vs FICHÁRIO ---
         st.markdown("---")
         st.write("### Módulo de Upgrade: Deck Pronto vs Fichário")
@@ -579,13 +534,3 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                         
                     except Exception as e:
                         st.error(f"Erro ao processar análise de upgrade: {e}")
-
-        # Botão de Exportar Relatório de Upgrades em PDF
-        if 'last_upgrade_analysis' in st.session_state:
-            pdf_upgrade_bytes = generate_pdf_report("Relatorio de Upgrade de Deck", st.session_state['last_upgrade_analysis'])
-            st.download_button(
-                label="📥 Baixar Relatório de Upgrades (PDF)",
-                data=pdf_upgrade_bytes,
-                file_name="mtg_upgrades_deck.pdf",
-                mime="application/pdf"
-            )
