@@ -532,6 +532,6 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                     st.markdown(res_text)
                     
                     export_text = f"1 {cmd_name.split(' & ')[0]}\n" + "\n".join([f"1 {c['Carta']}" for c in valid_playables])
-                    st.text_area("Copiar para Moxfield / ManaBox:", value=export_text, height=120)
+                    st.text_area("Lista das Cartas Identificadas:", value=export_text, height=120)
                 except Exception as e:
                     st.error(f"Erro: {e}")
