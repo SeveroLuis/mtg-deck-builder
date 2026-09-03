@@ -388,7 +388,7 @@ if cmd_1_name:
         st.sidebar.info("Este comandante permite Parceiro/Background!")
         search_term_2 = st.sidebar.text_input("Nome do Parceiro/Background:", placeholder="Ex: Samwise, Haunted One", key="search_cmd_2")
         filtered_2 = search_commanders_scryfall(search_term_2)
-        cmd_2_name = st.sidebar.selectbox("Selecio ne o Parceiro/Background:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
+        cmd_2_name = st.sidebar.selectbox("Selecione o Parceiro/Background:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
 
         if cmd_2_name:
             c2_data = fetch_scryfall_card(cmd_2_name)
@@ -407,12 +407,12 @@ if cmd_1_name:
         st.sidebar.image(img_url, use_container_width=True)
 
 # --- ESCANEAMENTO ---
-st.write("### Leitura de Coleção e Fichários em Lote")
-uploaded_files = st.file_uploader("Envie as fotos do seu fichário (Aceita qualquer idioma):", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
+st.write("### Identificação das cartas")
+uploaded_files = st.file_uploader("Envie fotos das cartas na melhor qualidade possível:", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
 
 if uploaded_files:
     st.write(f"**{len(uploaded_files)} foto(s) carregada(s).**")
-    if st.button("Escanear Fotos e Compilar Coleção", type="primary"):
+    if st.button("Escanear e Identificar as Cartas", type="primary"):
         all_cards_map = {}
         progress_bar = st.progress(0)
         status_text = st.empty()
