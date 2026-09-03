@@ -570,7 +570,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
 
                         ### 1. Sugestões de Upgrades e Trocas Diretas
                         Indique cartas do fichário que devem ENTRAR e qual carta do deck atual deve SAIR para dar lugar:
-                        - **Entra (Fichário): [Nome da Carta]** <--- **Sai (Deck Actual): [Nome da Carta]**: [Motivo cirúrgico do upgrade em 1 frase].
+                        - **Entra: [Nome da Carta]** <--- **Sai: [Nome da Carta]**: [Motivo cirúrgico do upgrade em 1 frase].
 
                         ### 2. Sinergias de Alto Impacto Encontradas
                         Indique combinações fortes entre cartas do Fichário e cartas já presentes no Deck Atual:
