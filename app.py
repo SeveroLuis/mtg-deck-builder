@@ -477,7 +477,7 @@ def _process_single_card(item, cmd_colors, edhrec_db):
 
 if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
     st.markdown("---")
-    st.write("### Análise das Cartas Baseada no Comandante")
+    st.write("### Sinergia com o Comandante (EDHREC)")
     if st.button("Analisar Cartas"):
         with st.spinner("Buscando dados em cache/APIs..."):
             cmd_data = st.session_state.get('commander_data', {})
@@ -508,7 +508,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
             st.dataframe(clean_list(st.session_state['junk_cards']), use_container_width=True)
         
         st.markdown("---")
-        st.write("### Análise de Sinergias")
+        st.write("### Análise de Sinergias Carta com Carta")
         if st.button("Gerar Raio-X de Sinergias", type="primary"):
             with st.spinner("Analisando interações..."):
                 try:
