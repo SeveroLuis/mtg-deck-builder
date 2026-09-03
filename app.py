@@ -10,7 +10,7 @@ from fpdf import FPDF
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.9.2 - Alta Performance & Máxima Velocidade")
+st.subheader("Protótipo 0.9.3 - Scanner Robusto e Otimizado")
 
 # --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL ---
 @st.cache_data(ttl=3600)
@@ -88,14 +88,14 @@ def call_gemini_api(api_key, prompt, image=None):
             
     raise RuntimeError(f"Não foi possível obter resposta da API. Último erro: {last_error}")
 
-def compress_image_for_api(pil_image, max_dim=1024):
-    """Reduz o tamanho da imagem de forma agressiva para acelerar o upload e resposta da IA."""
+def compress_image_for_api(pil_image, max_dim=1400):
+    """Mantém resolução ótima para leitura de texto sem perder velocidade."""
     img = pil_image.copy()
     img.thumbnail((max_dim, max_dim))
     buffer = io.BytesIO()
     if img.mode != 'RGB':
         img = img.convert('RGB')
-    img.save(buffer, format="JPEG", quality=75)
+    img.save(buffer, format="JPEG", quality=85)
     buffer.seek(0)
     return Image.open(buffer)
 
@@ -262,20 +262,35 @@ if uploaded_files:
             try:
                 raw_img = Image.open(file)
                 optimized_img = compress_image_for_api(raw_img)
-                prompt = 'Analise a imagem de fichário MTG. Retorne APENAS um JSON puro no formato: [{"card_name": "Sol Ring", "qty": 1}]'
+                prompt = """
+                Analise esta imagem de uma página de fichário de Magic: The Gathering.
+                Identifique todas as cartas visíveis na foto e seus respectivos nomes oficiais em inglês.
+                Retorne a resposta EXATAMENTE no formato JSON de um array de objetos, sem nenhum texto adicional fora do JSON:
+                [
+                  {"card_name": "Nome da Carta", "qty": 1}
+                ]
+                """
                 raw_text = call_gemini_api(api_key, prompt, optimized_img)
                 
-                if "```" in raw_text:
-                    parts = raw_text.split("```")
+                # Limpeza segura do bloco JSON
+                clean_json_str = raw_text.strip()
+                if "```" in clean_json_str:
+                    parts = clean_json_str.split("```")
                     for part in parts:
                         cp = part.strip()
-                        if cp.startswith("json"): cp = cp[4:].strip()
-                        if cp.startswith("["): raw_text = cp; break
-                return json.loads(raw_text)
-            except Exception:
+                        if cp.startswith("json"): 
+                            cp = cp[4:].strip()
+                        if cp.startswith("[") and cp.endswith("]"): 
+                            clean_json_str = cp
+                            break
+                
+                cards_list = json.loads(clean_json_str)
+                return cards_list
+            except Exception as e:
+                print(f"Erro ao processar imagem: {e}")
                 return []
 
-        # Processamento ultra-rápido em paralelo de todas as fotos enviadas
+        # Processamento paralelo
         with ThreadPoolExecutor(max_workers=4) as executor:
             results = list(executor.map(process_single_image, uploaded_files))
             
