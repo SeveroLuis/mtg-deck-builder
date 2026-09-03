@@ -24,7 +24,7 @@ def load_commander_list():
         if res.status_code == 200:
             data = res.json().get("data", [])
             if len(data) > 100:
-                return ["➕ Digitar outro comandante..."] + sorted(data)
+                return sorted(data)
     except Exception:
         pass
 
@@ -36,7 +36,7 @@ def load_commander_list():
             cards = res.json().get("data", [])
             names = [c.get("name") for c in cards if c.get("name")]
             if len(names) > 50:
-                return ["➕ Digitar outro comandante..."] + sorted(list(set(names)))
+                return sorted(list(set(names)))
     except Exception:
         pass
 
@@ -51,7 +51,7 @@ def load_commander_list():
         "Animate Dead", "Zhulodok, Void Gorger", "Pantlaza, Sun-Favored",
         "Voja, Jaws of the Conclave", "Stella Lee, Wild Card"
     ])
-    return ["➕ Digitar outro comandante..."] + fallback_list
+    return fallback_list
 
 # --- TRADUÇÃO E SIMPLIFICAÇÃO DE TIPOS DE CARTAS ---
 def translate_type_line(type_line):
@@ -209,7 +209,7 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- BARRA LATERAL (SELEÇÃO DE COMANDANTE INSTANTÂNEA E LIMPA) ---
+# --- BARRA LATERAL (DUAS CAIXAS DE PESQUISA REATIVAS) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -224,23 +224,36 @@ st.sidebar.subheader("Escolher Comandante")
 
 commander_list = load_commander_list()
 
-default_idx = 0
-for idx, name in enumerate(commander_list):
-    if "Atraxa, Praetors' Voice" in name:
-        default_idx = idx
-        break
-
-selected_option = st.sidebar.selectbox(
-    "Comandante",
-    options=commander_list,
-    index=default_idx,
+# Caixa 1: Campo de digitação livre
+search_term = st.sidebar.text_input(
+    "Buscar comandante:",
+    placeholder="Digite para filtrar (ex: krenko)",
     label_visibility="collapsed"
 )
 
-if selected_option == "➕ Digitar outro comandante...":
-    selected_commander = st.sidebar.text_input("Digite o nome exato do comandante:", value="Atraxa, Praetors' Voice")
+# Filtragem dinâmica conforme a digitação
+if search_term.strip():
+    term = search_term.strip().lower()
+    matches = [c for c in commander_list if term in c.lower()]
+    options = matches if matches else [search_term.strip()]
 else:
-    selected_commander = selected_option
+    options = commander_list
+
+# Encontrar o índice padrão de Atraxa se a busca estiver vazia
+default_idx = 0
+if not search_term.strip():
+    for idx, name in enumerate(options):
+        if "Atraxa, Praetors' Voice" in name:
+            default_idx = idx
+            break
+
+# Caixa 2: Menu de seleção das sugestões
+selected_commander = st.sidebar.selectbox(
+    "Sugestões:",
+    options=options,
+    index=default_idx if default_idx < len(options) else 0,
+    label_visibility="collapsed"
+)
 
 if selected_commander:
     commander_data = fetch_scryfall_card(selected_commander)
