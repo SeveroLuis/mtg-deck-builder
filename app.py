@@ -9,41 +9,53 @@ from concurrent.futures import ThreadPoolExecutor
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.7.7 - Busca Otimizada e Afunilada")
+st.subheader("Protótipo 0.7.8 - Busca Dinâmica Universal de Comandantes")
 
-# --- BUSCA E CACHE DA LISTA EXCLUSIVA DE COMANDANTES DO SCRYFALL ---
-@st.cache_data(ttl=86400)
-def load_commander_list():
-    """Busca APENAS a lista oficial de Comandantes no Scryfall (sem carregar cartas normais)."""
+# --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL (SEM LIMITES DE LISTA LOCAL) ---
+@st.cache_data(ttl=3600)
+def search_commanders_scryfall(query_term):
+    """
+    Busca em tempo real qualquer comandante no Scryfall que contenha o termo digitado.
+    Garante suporte total a Universes Beyond, edições recentes e lendárias raras.
+    """
+    if not query_term or len(query_term.strip()) < 2:
+        # Sugestões iniciais famosas para quando a caixa de busca estiver vazia
+        return [
+            "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
+            "Yuriko, the Tiger's Shadow", "Urza, Lord High Artificer", 
+            "Lathril, Blade of the Elves", "The Ur-Dragon", "Muldrotha, the Gravetide",
+            "Frodo, Sauron's Bane", "Shadowheart, Dark Justiciar", "Hazel of the Rootbloom"
+        ]
+
     headers = {
         "User-Agent": "MTGCommanderAssistant/1.0 (https://github.com)",
         "Accept": "application/json"
     }
     
+    encoded_query = requests.utils.quote(f'is:commander name:"{query_term.strip()}"')
+    url = f"https://api.scryfall.com/cards/search?q={encoded_query}&order=name"
+    
     try:
-        url = "https://api.scryfall.com/catalog/commander-names"
-        res = requests.get(url, headers=headers, timeout=10)
+        res = requests.get(url, headers=headers, timeout=6)
         if res.status_code == 200:
             data = res.json().get("data", [])
-            # Elimina cartas digitais do Arena que começam com "A-"
-            clean_data = [name for name in data if not name.startswith("A-")]
-            if len(clean_data) > 100:
-                return sorted(clean_data)
+            names = [card.get("name") for card in data if not card.get("name", "").startswith("A-")]
+            if names:
+                return sorted(list(set(names)))
     except Exception:
         pass
 
-    # Fallback leve de segurança apenas com comandantes
-    fallback_list = [
-        "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
-        "Yuriko, the Tiger's Shadow", "Urza, Lord High Artificer", 
-        "Lathril, Blade of the Elves", "The Ur-Dragon", "Muldrotha, the Gravetide",
-        "Prosper, Tome-Bound", "Nekusar, the Mindrazer", "Korvold, Fae-Cursed King",
-        "Isshin, Two Heavens as One", "Sliver Overlord", "Kenrith, the Returned King",
-        "Golos, Tireless Pilgrim", "Meria, Scholar of Antiquity", "Jodah, the Unifier",
-        "Zhulodok, Void Gorger", "Pantlaza, Sun-Favored", "Voja, Jaws of the Conclave", 
-        "Stella Lee, Wild Card", "Krenko, Tin Street Kingpin", "Hamza, Guardian of Arashin"
-    ]
-    return sorted(fallback_list)
+    # Fallback via Autocomplete oficial do Scryfall caso a busca avançada retorne vazio
+    try:
+        auto_url = f"https://api.scryfall.com/cards/autocomplete?q={requests.utils.quote(query_term.strip())}"
+        res = requests.get(auto_url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            names = res.json().get("data", [])
+            return sorted([n for n in names if not n.startswith("A-")])
+    except Exception:
+        pass
+
+    return []
 
 # --- TRADUÇÃO E SIMPLIFICAÇÃO DE TIPOS DE CARTAS ---
 def translate_type_line(type_line):
@@ -201,7 +213,7 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- BARRA LATERAL (BUSCA AFUNILADA E ULTRA LEVE) ---
+# --- BARRA LATERAL (BUSCA DINÂMICA UNIVERSAL) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -214,40 +226,25 @@ st.sidebar.success("API Ativa")
 st.sidebar.markdown("---")
 st.sidebar.subheader("Escolher Comandante")
 
-commander_list = load_commander_list()
-
-# 1. Campo de texto para digitar poucas letras
+# 1. Campo de busca direta
 search_term = st.sidebar.text_input(
-    "Digite o nome ou parte dele:",
-    placeholder="Ex: hamza, krenko, atraxa...",
+    "Pesquisar Comandante:",
+    placeholder="Ex: Frodo, Shadowheart, Hazel, Hamza...",
     key="search_commander_input"
 )
 
-# 2. Afunilamento exato por substring em Python (instantâneo e ultra leve)
-if search_term.strip():
-    term = search_term.strip().lower()
-    filtered_list = [c for c in commander_list if term in c.lower()]
-else:
-    filtered_list = commander_list
+# 2. Busca dinâmica na API do Scryfall com base no termo digitado
+filtered_commanders = search_commanders_scryfall(search_term)
 
-# 3. Exibir seleção apenas com as cartas filtradas
 selected_commander = None
-if not filtered_list:
-    st.sidebar.warning("Nenhum comandante encontrado.")
+if not filtered_commanders:
+    st.sidebar.warning("Nenhum comandante encontrado no Scryfall.")
 else:
-    # Se nada foi digitado, tenta colocar Atraxa como inicial
-    default_idx = 0
-    if not search_term.strip():
-        for idx, name in enumerate(filtered_list):
-            if "Atraxa, Praetors' Voice" in name:
-                default_idx = idx
-                break
-                
-    label_text = f"Resultado ({len(filtered_list)} encontrado(s)):" if search_term.strip() else "Selecione o Comandante:"
+    label_text = f"Resultados Encontrados ({len(filtered_commanders)}):" if search_term.strip() else "Sugestões Rápidas:"
     selected_commander = st.sidebar.selectbox(
         label_text,
-        options=filtered_list,
-        index=default_idx if default_idx < len(filtered_list) else 0,
+        options=filtered_commanders,
+        index=0,
         key="commander_selectbox"
     )
 
