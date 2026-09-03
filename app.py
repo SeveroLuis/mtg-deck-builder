@@ -14,44 +14,49 @@ st.subheader("Protótipo 0.7.6 - Triagem, Sinergias e Otimização")
 # --- BUSCA E CACHE DA LISTA COMPLETA DE COMANDANTES DO SCRYFALL ---
 @st.cache_data(ttl=86400)
 def load_commander_list():
-    """Busca a lista completa de nomes de Comandantes no Scryfall para busca e autocomplete instantâneo."""
-    headers = {"User-Agent": "MTGCommanderAssistant/1.0 (https://github.com)", "Accept": "application/json"}
+    """Busca a lista completa de nomes de Comandantes no Scryfall, filtrando versoes digitais (A-)."""
+    headers = {
+        "User-Agent": "MTGCommanderAssistant/1.0 (https://github.com)",
+        "Accept": "application/json"
+    }
     
-    # 1ª Tentativa: Catálogo oficial de comandantes do Scryfall (~2.000+ comandantes)
+    # 1ª Tentativa: Catálogo oficial de comandantes do Scryfall
     try:
         url = "https://api.scryfall.com/catalog/commander-names"
-        res = requests.get(url, headers=headers, timeout=15)
+        res = requests.get(url, headers=headers, timeout=12)
         if res.status_code == 200:
             data = res.json().get("data", [])
-            if len(data) > 100:
-                return sorted(data)
+            # FILTRO: Remove cartas digitais/Alchemy que começam com "A-"
+            clean_data = [name for name in data if not name.startswith("A-")]
+            if len(clean_data) > 500:
+                return sorted(clean_data)
     except Exception:
         pass
 
-    # 2ª Tentativa: Busca por cartas legais como comandante
+    # 2ª Tentativa: Catálogo geral de nomes de cartas
     try:
-        url = "https://api.scryfall.com/cards/search?q=is%3Acommander"
-        res = requests.get(url, headers=headers, timeout=15)
+        url = "https://api.scryfall.com/catalog/card-names"
+        res = requests.get(url, headers=headers, timeout=12)
         if res.status_code == 200:
-            cards = res.json().get("data", [])
-            names = [c.get("name") for c in cards if c.get("name")]
-            if len(names) > 50:
-                return sorted(list(set(names)))
+            data = res.json().get("data", [])
+            clean_data = [name for name in data if not name.startswith("A-")]
+            if len(clean_data) > 500:
+                return sorted(clean_data)
     except Exception:
         pass
 
-    # Fallback expandido
-    fallback_list = sorted([
+    # Fallback de segurança limpo
+    fallback_list = [
         "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
         "Yuriko, the Tiger's Shadow", "Urza, Lord High Artificer", 
         "Lathril, Blade of the Elves", "The Ur-Dragon", "Muldrotha, the Gravetide",
         "Prosper, Tome-Bound", "Nekusar, the Mindrazer", "Korvold, Fae-Cursed King",
         "Isshin, Two Heavens as One", "Sliver Overlord", "Kenrith, the Returned King",
         "Golos, Tireless Pilgrim", "Meria, Scholar of Antiquity", "Jodah, the Unifier",
-        "Animate Dead", "Zhulodok, Void Gorger", "Pantlaza, Sun-Favored",
-        "Voja, Jaws of the Conclave", "Stella Lee, Wild Card"
-    ])
-    return fallback_list
+        "Zhulodok, Void Gorger", "Pantlaza, Sun-Favored", "Voja, Jaws of the Conclave", 
+        "Stella Lee, Wild Card", "Krenko, Tin Street Kingpin", "Tiamat"
+    ]
+    return sorted(fallback_list)
 
 # --- TRADUÇÃO E SIMPLIFICAÇÃO DE TIPOS DE CARTAS ---
 def translate_type_line(type_line):
@@ -209,7 +214,7 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- BARRA LATERAL (CAIXA ÚNICA COM AUTOCOMPLETE NATIVO) ---
+# --- BARRA LATERAL (BUSCA LIMPA COM AUTOCOMPLETE) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -224,19 +229,18 @@ st.sidebar.subheader("Escolher Comandante")
 
 commander_list = load_commander_list()
 
-# Descobrir índice padrão de Atraxa
+# Define Atraxa como padrão inicial se existir
 default_idx = 0
 for idx, name in enumerate(commander_list):
     if "Atraxa, Praetors' Voice" in name:
         default_idx = idx
         break
 
-# CAIXA ÚNICA: O usuário digita qualquer letra e o Streamlit filtra a lista na hora!
+# CAIXA ÚNICA LIMPA: Basta digitar poucas letras (ex: krenko) que o Streamlit filtra a lista
 selected_commander = st.sidebar.selectbox(
-    "Digite as primeiras letras para buscar:",
+    "Pesquisar Comandante:",
     options=commander_list,
-    index=default_idx,
-    placeholder="Digite para buscar (ex: krenko)..."
+    index=default_idx
 )
 
 if selected_commander:
