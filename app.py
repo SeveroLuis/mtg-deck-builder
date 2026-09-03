@@ -103,8 +103,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- CABEÇALHO PRINCIPAL ---
-st.title("Shaper of Commander Deck")
-st.caption("Otimização de Decks Commander & Análise de Imagens")
+st.title("SHAPER OF COMMANDER DECK")
 st.markdown("---")
 
 # --- BANCO DE DADOS SQLITE PARA CACHE PERSISTENTE ---
@@ -372,7 +371,6 @@ def fetch_edhrec_full_metrics(commander_name):
 
 # --- BARRA LATERAL ---
 st.sidebar.header("CONFIGURAÇÃO")
-st.sidebar.subheader("Comandante")
 
 search_term_1 = st.sidebar.text_input("Nome do Comandante:", placeholder="Ex: Hazezon, Aloy, Hamza", key="search_cmd_1")
 filtered_1 = search_commanders_scryfall(search_term_1)
@@ -390,7 +388,7 @@ if cmd_1_name:
         st.sidebar.info("Este comandante permite Parceiro/Background!")
         search_term_2 = st.sidebar.text_input("Nome do Parceiro/Background:", placeholder="Ex: Samwise, Haunted One", key="search_cmd_2")
         filtered_2 = search_commanders_scryfall(search_term_2)
-        cmd_2_name = st.sidebar.selectbox("Parceiro/Background:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
+        cmd_2_name = st.sidebar.selectbox("Selecio ne o Parceiro/Background:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
 
         if cmd_2_name:
             c2_data = fetch_scryfall_card(cmd_2_name)
