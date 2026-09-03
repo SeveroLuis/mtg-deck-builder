@@ -548,7 +548,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
             st.write("### Análise de Sinergias: Deck Atual vs Cartas Escaneadas")
             st.caption("A ferramenta irá analisar o deck enviado e indicar quais cartas escaneadas oferecem um bom nível de sinergia.")
             
-            if st.button("Analisar Possível Upgrade"):
+            if st.button("Analisar Upgrade"):
                 with st.spinner("Comparando a lista do seu deck com as cartas enviadas..."):
                     try:
                         cmd_name = st.session_state.get('commander_data', {}).get('name', 'Comandante')
