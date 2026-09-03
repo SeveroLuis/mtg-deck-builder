@@ -279,17 +279,15 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- LATERAL / SELEÇÃO ---
-st.sidebar.header("Configurações e Comandante")
-api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
-api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
+# --- CARREGAMENTO INVISÍVEL DA CHAVE ---
+api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 if not api_key:
-    st.info("Insira sua Gemini API Key na barra lateral para continuar.")
+    st.error("Erro de configuração: A chave GEMINI_API_KEY não foi encontrada nos Secrets do servidor.")
     st.stop()
 
-st.sidebar.success("API Ativa")
-st.sidebar.markdown("---")
+# --- BARRA LATERAL ---
+st.sidebar.header("Navegação e Comandante")
 st.sidebar.subheader("Seleção de Comandante")
 
 search_term_1 = st.sidebar.text_input("Pesquisar Comandante (PT/EN):", placeholder="Ex: Atraxa, Tymna, Voz dos Pretores...", key="search_cmd_1")
