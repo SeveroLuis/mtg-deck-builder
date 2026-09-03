@@ -1,20 +1,93 @@
 import json
+import sqlite3
+import time
+import io
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import streamlit as st
 from PIL import Image
-import io
 import google.generativeai as genai
 from concurrent.futures import ThreadPoolExecutor
 
-st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
+st.set_page_config(page_title="MTG Commander Assistant v1.0", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.9.6 - Suporte Multilíngue & Seleção Inteligente de Parceiros")
+st.subheader("Versão 1.0.0 - Cache Persistente, Resiliência e Lançamento Oficial")
 
-# --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL (COM SUPORTE MULTILÍNGUE) ---
-@st.cache_data(ttl=3600)
+# --- BANCO DE DADOS SQLITE PARA CACHE PERSISTENTE ---
+DB_NAME = "mtg_cache.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS scryfall_cache (
+            query_key TEXT PRIMARY KEY,
+            json_data TEXT,
+            timestamp REAL
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS edhrec_cache (
+            commander_slug TEXT PRIMARY KEY,
+            json_data TEXT,
+            timestamp REAL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def get_cached_data(table, key):
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute(f"SELECT json_data, timestamp FROM {table} WHERE query_key=?" if table == "scryfall_cache" else f"SELECT json_data, timestamp FROM {table} WHERE commander_slug=?", (key,))
+        row = c.fetchone()
+        conn.close()
+        if row:
+            # Cache válido por 7 dias (604800 segundos)
+            if time.time() - row[1] < 604800:
+                return json.loads(row[0])
+    except Exception:
+        pass
+    return None
+
+def set_cached_data(table, key, data):
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        json_str = json.dumps(data)
+        now = time.time()
+        if table == "scryfall_cache":
+            c.execute("INSERT OR REPLACE INTO scryfall_cache (query_key, json_data, timestamp) VALUES (?, ?, ?)", (key, json_str, now))
+        else:
+            c.execute("INSERT OR REPLACE INTO edhrec_cache (commander_slug, json_data, timestamp) VALUES (?, ?, ?)", (key, json_str, now))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+# --- SESSÃO HTTP COM RATE LIMITING E RETRIES AUTOMÁTICOS ---
+def get_http_session():
+    session = requests.Session()
+    retries = Retry(
+        total=4,
+        backoff_factor=1,  # Aguarda 1s, 2s, 4s entre tentativas em falhas ou Rate Limit (429)
+        status_forcelist=[429, 500, 502, 503, 504],
+        raise_on_status=False
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+HTTP = get_http_session()
+
+# --- BUSCA DE COMANDANTES NO SCRYFALL ---
 def search_commanders_scryfall(query_term):
-    """Busca em tempo real qualquer comandante ou background no Scryfall, aceitando termos em qualquer idioma."""
     if not query_term or len(query_term.strip()) < 2:
         return [
             "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
@@ -24,70 +97,49 @@ def search_commanders_scryfall(query_term):
             "Tymna the Weaver", "Kraum, Ludevic's Opus"
         ]
 
-    headers = {
-        "User-Agent": "MTGCommanderAssistant/1.0 (https://github.com)",
-        "Accept": "application/json"
-    }
-    
+    cache_key = f"search_{query_term.strip().lower()}"
+    cached = get_cached_data("scryfall_cache", cache_key)
+    if cached:
+        return cached
+
+    headers = {"User-Agent": "MTGCommanderAssistant/1.0", "Accept": "application/json"}
     encoded_query = requests.utils.quote(f'lang:any (is:commander or type:background) name:"{query_term.strip()}"')
     url = f"https://api.scryfall.com/cards/search?q={encoded_query}&order=name"
     
     try:
-        res = requests.get(url, headers=headers, timeout=6)
+        time.sleep(0.05) # Respeita política de delay do Scryfall (50ms)
+        res = HTTP.get(url, headers=headers, timeout=6)
         if res.status_code == 200:
             data = res.json().get("data", [])
             names = [card.get("name") for card in data if not card.get("name", "").startswith("A-")]
             if names:
-                return sorted(list(set(names)))
-    except Exception:
-        pass
-
-    try:
-        auto_url = f"https://api.scryfall.com/cards/autocomplete?q={requests.utils.quote(query_term.strip())}"
-        res = requests.get(auto_url, headers=headers, timeout=5)
-        if res.status_code == 200:
-            names = res.json().get("data", [])
-            return sorted([n for n in names if not n.startswith("A-")])
+                unique_names = sorted(list(set(names)))
+                set_cached_data("scryfall_cache", cache_key, unique_names)
+                return unique_names
     except Exception:
         pass
 
     return []
 
-# --- TRADUÇÃO E SIMPLIFICAÇÃO DE TIPOS DE CARTAS ---
+# --- TRADUÇÃO E FORMATO DE TIPOS ---
 def translate_type_line(type_line):
-    """Traduz e formata a linha de tipo das cartas para o português."""
     if not type_line:
         return "Desconhecido"
-    
     translations = {
-        "Creature": "Criatura",
-        "Legendary": "Lendário(a)",
-        "Artifact": "Artefato",
-        "Enchantment": "Encantamento",
-        "Instant": "Mágica Instantânea",
-        "Sorcery": "Feitiço",
-        "Land": "Terreno",
-        "Planeswalker": "Planeswalker",
-        "Battle": "Batalha",
-        "Saga": "Saga",
-        "Equipment": "Equipamento",
-        "Aura": "Aura",
-        "Basic": "Básico",
-        "Snow": "Neve",
-        "Kindred": "Tribal",
-        "Tribal": "Tribal"
+        "Creature": "Criatura", "Legendary": "Lendário(a)", "Artifact": "Artefato",
+        "Enchantment": "Encantamento", "Instant": "Mágica Instantânea", "Sorcery": "Feitiço",
+        "Land": "Terreno", "Planeswalker": "Planeswalker", "Battle": "Batalha",
+        "Saga": "Saga", "Equipment": "Equipamento", "Aura": "Aura",
+        "Basic": "Básico", "Snow": "Neve", "Kindred": "Tribal", "Tribal": "Tribal"
     }
-    
     res = type_line
     for eng, pt in translations.items():
         res = res.replace(eng, pt)
     return res
 
-# --- FUNÇÃO ROBUSTA DE CHAMADA À API GEMINI ---
+# --- INTEGRAÇÃO GEMINI API ---
 def call_gemini_api(api_key, prompt, image=None):
-    """Consulta dinamicamente os modelos disponíveis na API Key e executa a chamada com fallback automático."""
     genai.configure(api_key=api_key)
-    
     valid_models = []
     try:
         for m in genai.list_models():
@@ -96,18 +148,9 @@ def call_gemini_api(api_key, prompt, image=None):
     except Exception:
         pass
     
-    fallback_models = [
-        'gemini-1.5-flash',
-        'gemini-1.5-flash-latest',
-        'gemini-2.0-flash',
-        'gemini-2.5-flash',
-        'gemini-1.5-pro',
-        'gemini-1.5-pro-latest'
-    ]
-    
+    fallback_models = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-pro']
     flash_dynamic = [m for m in valid_models if 'flash' in m.lower()]
     other_dynamic = [m for m in valid_models if m not in flash_dynamic]
-    
     candidates = flash_dynamic + other_dynamic + [m for m in fallback_models if m not in valid_models]
     
     last_error = None
@@ -122,11 +165,9 @@ def call_gemini_api(api_key, prompt, image=None):
             last_error = e
             continue
             
-    raise RuntimeError(f"Não foi possível obter resposta da API. Último erro: {last_error}")
+    raise RuntimeError(f"Erro na API Gemini: {last_error}")
 
-# --- OTIMIZAÇÃO DE IMAGEM PARA LOTES GRANDES ---
 def compress_image_for_api(pil_image, max_dim=1600):
-    """Redimensiona e otimiza a imagem para acelerar o envio na API e evitar timeouts."""
     img = pil_image.copy()
     img.thumbnail((max_dim, max_dim))
     buffer = io.BytesIO()
@@ -136,36 +177,33 @@ def compress_image_for_api(pil_image, max_dim=1600):
     buffer.seek(0)
     return Image.open(buffer)
 
-# --- FUNÇÕES AUXILIARES SCRYFALL & EDHREC (COM SUPORTE A CARTAS INTERNACIONAIS) ---
-@st.cache_data(ttl=3600)
+# --- SCRYFALL & EDHREC METRICS ---
 def fetch_scryfall_card(card_name):
-    """Busca dados completos de uma carta no Scryfall com fallback automático para qualquer idioma."""
     if not card_name or not card_name.strip():
         return {"name": "", "found": False, "color_identity": [], "type_line": "", "image_url": "", "oracle_text": "", "has_partner": False}
     
+    cache_key = f"card_{card_name.strip().lower()}"
+    cached = get_cached_data("scryfall_cache", cache_key)
+    if cached:
+        return cached
+
     headers = {"User-Agent": "MTGCommanderAssistant/1.0", "Accept": "application/json"}
     encoded_name = requests.utils.quote(card_name.strip())
-    
-    # 1. Busca exata em inglês
     url = f"https://api.scryfall.com/cards/named?exact={encoded_name}"
     
     try:
-        response = requests.get(url, headers=headers, timeout=5)
-        
-        # 2. Busca aproximada (fuzzy) em inglês
+        time.sleep(0.05)
+        response = HTTP.get(url, headers=headers, timeout=5)
         if response.status_code != 200:
             url = f"https://api.scryfall.com/cards/named?fuzzy={encoded_name}"
-            response = requests.get(url, headers=headers, timeout=5)
+            response = HTTP.get(url, headers=headers, timeout=5)
             
-        # 3. Fallback Multilíngue (Garantia para cartas impressas em Português, Japonês, etc.)
         if response.status_code != 200:
             search_url = f"https://api.scryfall.com/cards/search?q=lang:any+\"{encoded_name}\""
-            search_res = requests.get(search_url, headers=headers, timeout=5)
+            search_res = HTTP.get(search_url, headers=headers, timeout=5)
             if search_res.status_code == 200:
-                s_data = search_res.json().get("data", [])
-                if s_data:
-                    response = search_res
-            
+                response = search_res
+
         if response.status_code == 200:
             data = response.json()
             if "data" in data and isinstance(data["data"], list) and len(data["data"]) > 0:
@@ -182,15 +220,13 @@ def fetch_scryfall_card(card_name):
             keywords = [k.lower() for k in data.get("keywords", [])]
             text_lower = oracle_text.lower()
             
-            # Detecção de mecânicas de dois comandantes (Partner, Background, Friends Forever, Doctor's Companion)
             partner_keywords = ["partner", "choose a background", "friends forever", "doctor's companion"]
             has_partner = any(kw in keywords for kw in partner_keywords) or any(term in text_lower for term in partner_keywords)
-            
             if "background" in type_line.lower():
                 has_partner = True
                 
-            return {
-                "name": data.get("name", card_name), # Sempre devolve o nome oficial em inglês do Scryfall
+            result = {
+                "name": data.get("name", card_name),
                 "color_identity": data.get("color_identity", []),
                 "type_line": type_line,
                 "oracle_text": oracle_text,
@@ -198,6 +234,8 @@ def fetch_scryfall_card(card_name):
                 "found": True,
                 "has_partner": has_partner
             }
+            set_cached_data("scryfall_cache", cache_key, result)
+            return result
     except Exception:
         pass
         
@@ -206,16 +244,18 @@ def fetch_scryfall_card(card_name):
 def is_color_valid(card_colors, commander_colors):
     return set(card_colors).issubset(set(commander_colors))
 
-@st.cache_data(ttl=3600)
 def fetch_edhrec_full_metrics(commander_name):
-    """Puxa o banco do EDHREC e retorna métricas exatas de Inclusão e Sinergia."""
     headers = {"User-Agent": "MTGCommanderAssistant/1.0"}
     slug = commander_name.lower().replace("'", "").replace(",", "").replace(" ", "-")
-    url = f"https://json.edhrec.com/pages/commanders/{slug}.json"
     
+    cached = get_cached_data("edhrec_cache", slug)
+    if cached:
+        return cached
+
+    url = f"https://json.edhrec.com/pages/commanders/{slug}.json"
     edh_db = {}
     try:
-        res = requests.get(url, headers=headers, timeout=10)
+        res = HTTP.get(url, headers=headers, timeout=10)
         if res.status_code == 200:
             data = res.json()
             container = data.get("container", {}).get("json_dict", {}).get("cardlists", [])
@@ -234,11 +274,12 @@ def fetch_edhrec_full_metrics(commander_name):
                         "inclusion": label,
                         "category": header_category
                     }
+            set_cached_data("edhrec_cache", slug, edh_db)
     except Exception:
         pass
     return edh_db
 
-# --- BARRA LATERAL (CONFIGURAÇÕES E SELEÇÃO INTELIGENTE DE COMANDANTES) ---
+# --- LATERAL / SELEÇÃO ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -251,11 +292,7 @@ st.sidebar.success("API Ativa")
 st.sidebar.markdown("---")
 st.sidebar.subheader("Seleção de Comandante")
 
-search_term_1 = st.sidebar.text_input(
-    "Pesquisar Comandante (PT/EN):",
-    placeholder="Ex: Atraxa, Tymna, Voz dos Pretores...",
-    key="search_cmd_1"
-)
+search_term_1 = st.sidebar.text_input("Pesquisar Comandante (PT/EN):", placeholder="Ex: Atraxa, Tymna, Voz dos Pretores...", key="search_cmd_1")
 filtered_1 = search_commanders_scryfall(search_term_1)
 cmd_1_name = st.sidebar.selectbox("Comandante Principal:", options=filtered_1, index=0, key="sel_cmd_1") if filtered_1 else None
 
@@ -264,18 +301,12 @@ cmd_2_name = None
 if cmd_1_name:
     c1_data = fetch_scryfall_card(cmd_1_name)
     combined_colors = set(c1_data.get("color_identity", []))
-    
     display_name = c1_data['name']
     images_to_show = [c1_data['image_url']] if c1_data['image_url'] else []
     
-    # Exibe opção do 2º comandante SOMENTE se o 1º aceitar Parceiro/Background
     if c1_data.get("has_partner", False):
         st.sidebar.info("💡 Este comandante permite Parceiro / Background!")
-        search_term_2 = st.sidebar.text_input(
-            "Pesquisar Comandante 2 / Background (PT/EN):",
-            placeholder="Ex: Kraum, Shadowheart, Agente do Trono...",
-            key="search_cmd_2"
-        )
+        search_term_2 = st.sidebar.text_input("Pesquisar Comandante 2 / Background (PT/EN):", placeholder="Ex: Kraum, Shadowheart...", key="search_cmd_2")
         filtered_2 = search_commanders_scryfall(search_term_2)
         cmd_2_name = st.sidebar.selectbox("Segundo Comandante / Background:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
 
@@ -287,73 +318,45 @@ if cmd_1_name:
                 images_to_show.append(c2_data['image_url'])
                 
     final_color_list = sorted(list(combined_colors))
-    
-    st.session_state['commander_data'] = {
-        "name": display_name,
-        "color_identity": final_color_list,
-        "found": True
-    }
+    st.session_state['commander_data'] = {"name": display_name, "color_identity": final_color_list, "found": True}
     
     st.sidebar.markdown("---")
     st.sidebar.subheader(f"Deck: {display_name}")
-    st.sidebar.caption(f"Identidade de Cores Unificada: {', '.join(final_color_list) if final_color_list else 'Incolor'}")
+    st.sidebar.caption(f"Cores: {', '.join(final_color_list) if final_color_list else 'Incolor'}")
     for img_url in images_to_show:
         st.sidebar.image(img_url, use_container_width=True)
 
-# --- UPLOAD MULTI-IMAGEM DE FICHÁRIOS ---
+# --- ESCANEAMENTO ---
 st.write("### Leitura de Coleção e Fichários em Lote")
-uploaded_files = st.file_uploader(
-    "Envie as fotos das páginas do seu fichário (Aceita cartas em qualquer idioma):",
-    type=["jpg", "jpeg", "png", "webp"],
-    accept_multiple_files=True
-)
+uploaded_files = st.file_uploader("Envie as fotos do seu fichário (Aceita qualquer idioma):", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
 
 if uploaded_files:
     st.write(f"**{len(uploaded_files)} foto(s) carregada(s).**")
-    
-    with st.expander("Ver fotos carregadas", expanded=False):
-        cols = st.columns(min(4, len(uploaded_files)))
-        for idx, file in enumerate(uploaded_files):
-            cols[idx % 4].image(Image.open(file), caption=file.name, use_container_width=True)
-            
-    if st.button("Escanear Todas as Fotos e Compilar Coleção", type="primary"):
+    if st.button("Escanear Fotos e Compilar Coleção", type="primary"):
         all_cards_map = {}
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
         failed_images = []
         
         for idx, file in enumerate(uploaded_files):
-            status_text.text(f"Otimizando e analisando imagem {idx+1} de {len(uploaded_files)} ({file.name})...")
+            status_text.text(f"Analisando imagem {idx+1} de {len(uploaded_files)} ({file.name})...")
             try:
                 raw_img = Image.open(file)
                 optimized_img = compress_image_for_api(raw_img)
-                
-                # Prompt com instruções explícitas de suporte multilíngue
                 prompt = """
-                Analise a imagem enviada (página de fichário com cartas de MTG).
-                As cartas podem estar impressas em QUALQUER IDIOMA (Português, Inglês, Japonês, Espanhol, Alemão, Francês, etc.).
-
-                Identifique todas as cartas de MTG visíveis.
-                IMPORTANTE: Converta/Traduza o nome de cada carta para o seu NOME OFICIAL EM INGLÊS.
-                (Exemplo: Se a carta for "Anel Solar", retorne "Sol Ring").
-
-                Responda APENAS com um array JSON válido:
-                [{"card_name": "Sol Ring", "qty": 1}]
+                Analise a imagem enviada (página de fichário de MTG).
+                Converta/Traduza o nome de cada carta para o NOME OFICIAL EM INGLÊS.
+                Responda APENAS com um array JSON válido: [{"card_name": "Sol Ring", "qty": 1}]
                 """
-                
                 raw_text = call_gemini_api(api_key, prompt, optimized_img)
                 
-                backticks_marker = "\x60\x60\x60"
-                if backticks_marker in raw_text:
-                    parts = raw_text.split(backticks_marker)
+                backticks = "\x60\x60\x60"
+                if backticks in raw_text:
+                    parts = raw_text.split(backticks)
                     for part in parts:
-                        clean_part = part.strip()
-                        if clean_part.startswith("json"):
-                            clean_part = clean_part[4:].strip()
-                        if clean_part.startswith("["):
-                            raw_text = clean_part
-                            break
+                        clean = part.strip()
+                        if clean.startswith("json"): clean = clean[4:].strip()
+                        if clean.startswith("["): raw_text = clean; break
                 
                 cards_list = json.loads(raw_text)
                 for item in cards_list:
@@ -361,10 +364,8 @@ if uploaded_files:
                     qty = int(item.get("qty", 1))
                     if name:
                         key = name.lower()
-                        if key in all_cards_map:
-                            all_cards_map[key]["qty"] += qty
-                        else:
-                            all_cards_map[key] = {"card_name": name, "qty": qty}
+                        if key in all_cards_map: all_cards_map[key]["qty"] += qty
+                        else: all_cards_map[key] = {"card_name": name, "qty": qty}
             except Exception:
                 failed_images.append(file.name)
             
@@ -373,199 +374,84 @@ if uploaded_files:
         status_text.empty()
         compiled_list = list(all_cards_map.values())
         st.session_state['detected_cards'] = compiled_list
-        
-        if failed_images:
-            st.warning(f"Atenção: {len(failed_images)} imagem(ns) não puderam ser lidas ({', '.join(failed_images)}). As demais foram processadas.")
-        st.success(f"Compilação concluída! {len(compiled_list)} carta(s) única(s) identificadas no total.")
+        if failed_images: st.warning(f"{len(failed_images)} imagem(ns) com falha.")
+        st.success(f"{len(compiled_list)} carta(s) única(s) identificadas.")
 
-# --- FUNÇÃO AUXILIAR PARA PROCESSAMENTO EM PARALELO ---
+# --- PROCESSAMENTO PARALELO ---
 def _process_single_card(item, cmd_colors, edhrec_db):
     scry = fetch_scryfall_card(item['card_name'])
     if scry['found']:
         valid = is_color_valid(scry['color_identity'], cmd_colors)
         edh_info = edhrec_db.get(scry['name'].lower(), {})
-        
         raw_syn = edh_info.get("synergy_raw", 0)
         has_edh_data = edh_info.get("inclusion") is not None
         
-        translated_type = translate_type_line(scry['type_line'])
-        
         card_dict = {
-            "Carta": scry['name'],
-            "Qtd": item['qty'],
-            "Tipo": translated_type,
-            "Valida": "Sim" if valid else "Fora da Cor",
-            "Inclusão EDHREC": edh_info.get("inclusion", "Fora do Top EDHREC"),
-            "Sinergia EDHREC": edh_info.get("synergy", "0%"),
-            "Categoria EDHREC": edh_info.get("category", "Geral/Outros"),
+            "Carta": scry['name'], "Qtd": item['qty'], "Tipo": translate_type_line(scry['type_line']),
+            "Valida": "Sim" if valid else "Fora da Cor", "Inclusão EDHREC": edh_info.get("inclusion", "Fora do Top EDHREC"),
+            "Sinergia EDHREC": edh_info.get("synergy", "0%"), "Categoria EDHREC": edh_info.get("category", "Geral/Outros"),
             "_oracle_text": scry['oracle_text']
         }
-        
-        is_playable = valid and (has_edh_data or raw_syn > 0)
-        return card_dict, is_playable
+        return card_dict, (valid and (has_edh_data or raw_syn > 0))
     return None, False
 
-# --- VALIDAÇÃO E ABAS "DÁ JOGO" VS "FORA DO RADAR" ---
 if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
     st.markdown("---")
     st.write("### Triagem da Coleção vs Comandante")
-    
     if st.button("Validar Coleção no Scryfall e EDHREC"):
-        with st.spinner("Buscando dados em paralelo no EDHREC e Scryfall..."):
+        with st.spinner("Buscando dados em cache/APIs..."):
             cmd_data = st.session_state.get('commander_data', {})
             cmd_name = cmd_data.get('name', '').split(" & ")[0]
             cmd_colors = cmd_data.get('color_identity', [])
             
             edhrec_db = fetch_edhrec_full_metrics(cmd_name)
+            playable_cards, junk_cards = [], []
             
-            playable_cards = []
-            junk_cards = []
-            
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = [
-                    executor.submit(_process_single_card, item, cmd_colors, edhrec_db)
-                    for item in st.session_state['detected_cards']
-                ]
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                futures = [executor.submit(_process_single_card, item, cmd_colors, edhrec_db) for item in st.session_state['detected_cards']]
                 for future in futures:
                     card_dict, is_playable = future.result()
                     if card_dict:
-                        if is_playable:
-                            playable_cards.append(card_dict)
-                        else:
-                            junk_cards.append(card_dict)
+                        if is_playable: playable_cards.append(card_dict)
+                        else: junk_cards.append(card_dict)
             
             st.session_state['playable_cards'] = playable_cards
             st.session_state['junk_cards'] = junk_cards
 
     if 'playable_cards' in st.session_state:
-        tab1, tab2 = st.tabs([
-            f"Aproveitáveis ({len(st.session_state['playable_cards'])} cartas)",
-            f"Fora do Radar / Descarte ({len(st.session_state['junk_cards'])} cartas)"
-        ])
-        
-        def clean_display_list(card_list):
-            return [
-                {k: v for k, v in c.items() if not k.startswith("_")}
-                for c in card_list
-            ]
+        tab1, tab2 = st.tabs([f"Aproveitáveis ({len(st.session_state['playable_cards'])})", f"Descarte ({len(st.session_state['junk_cards'])})"])
+        clean_list = lambda l: [{k: v for k, v in c.items() if not k.startswith("_")} for c in l]
 
         with tab1:
-            st.markdown("**Cartas com sinergia ou presença confirmada no EDHREC para este comandante:**")
-            if st.session_state['playable_cards']:
-                st.dataframe(clean_display_list(st.session_state['playable_cards']), use_container_width=True)
-            else:
-                st.info("Nenhuma carta com sinergia estatística direta encontrada.")
-                
+            st.dataframe(clean_list(st.session_state['playable_cards']), use_container_width=True)
         with tab2:
-            st.markdown("**Cartas que cabem na cor, mas não possuem destaque nos dados do EDHREC:**")
-            if st.session_state['junk_cards']:
-                st.dataframe(clean_display_list(st.session_state['junk_cards']), use_container_width=True)
-            else:
-                st.info("Nenhuma carta descartável encontrada.")
+            st.dataframe(clean_list(st.session_state['junk_cards']), use_container_width=True)
         
         st.markdown("---")
         st.write("### Análise Cirúrgica de Sinergias Cruzadas")
-        
         if st.button("Gerar Matriz de Sinergias Carta-com-Carta", type="primary"):
-            with st.spinner("Analisando interações diretas entre as cartas do fichário..."):
+            with st.spinner("Analisando interações..."):
                 try:
                     cmd_name = st.session_state.get('commander_data', {}).get('name', 'Comandante')
                     valid_playables = [c for c in st.session_state['playable_cards'] if c['Valida'] == "Sim"]
                     
-                    if not valid_playables:
-                        st.warning("Não há cartas válidas e aproveitáveis suficientes para cruzar sinergias.")
-                    else:
-                        cards_data_prompt = "\n".join([
-                            f"- {c['Carta']} ({c['Tipo']}) | Categoria: {c['Categoria EDHREC']} | Sinergia EDHREC: {c['Sinergia EDHREC']} | Texto: {c.get('_oracle_text', '')[:80]}"
-                            for c in valid_playables
-                        ])
-                        
-                        prompt = f"""
-                        Você é um analista estatístico de MTG Commander. Seja EXTREMAMENTE OBJETIVO, CIRÚRGICO e DIRETO. Sem introduções, saudações ou dicas de deckbuilding geral.
+                    cards_data_prompt = "\n".join([f"- {c['Carta']} ({c['Tipo']}) | Sinergia: {c['Sinergia EDHREC']} | Texto: {c.get('_oracle_text', '')[:80]}" for c in valid_playables])
+                    prompt = f"""
+                    Você é um analista estatístico de MTG Commander. Seja CIRÚRGICO e DIRETO. Sem introduções.
+                    Comandante(s): {cmd_name}
+                    Cartas da coleção:
+                    {cards_data_prompt}
 
-                        Comandante(s): {cmd_name}
-                        
-                        Cartas aproveitáveis da coleção do jogador:
-                        {cards_data_prompt}
+                    ### Cartas Recomendadas da Coleção (Dados EDHREC)
+                    | Carta | Tipo | Categoria Funcional | Inclusão (%) [Fonte: EDHREC] | Sinergia (%) [Fonte: EDHREC] | Função no Deck |
 
-                        Gere a análise ESTRITAMENTE nas 2 seções abaixo (não adicione nenhuma outra seção):
-
-                        ### Cartas Recomendadas da Coleção (Dados EDHREC)
-                        Crie uma tabela Markdown contendo:
-                        | Carta | Tipo | Categoria Funcional | Inclusão (%) [Fonte: EDHREC] | Sinergia (%) [Fonte: EDHREC] | Função no Deck |
-
-                        ### Matriz de Sinergias Cruzadas do Fichário (Carta-com-Carta)
-                        Analise especificamente como as cartas escaneadas do jogador interagem ENTRE SI e com o(s) comandante(s).
-                        Liste apenas duplas concretas de cartas presentes na coleção do jogador (ex: Carta A + Carta B).
-                        Use bullet points curtos:
-                        - **[Carta A] + [Carta B]**: [Explicação cirúrgica de no máximo 10 palavras da interação direta].
-                        """
-                        
-                        res_text = call_gemini_api(api_key, prompt)
-                        st.session_state['last_synergy_analysis'] = res_text
-                        st.markdown(res_text)
-                        
-                        st.markdown("### Exportar Lista para Deckbuilder:")
-                        all_valid = valid_playables + [c for c in st.session_state['junk_cards'] if c['Valida'] == "Sim"]
-                        export_text = f"1 {cmd_name.split(' & ')[0]}\n" + "\n".join([f"1 {c['Carta']}" for c in all_valid])
-                        st.text_area("Copiar para Moxfield / ManaBox / Archidekt:", value=export_text, height=140)
+                    ### Matriz de Sinergias Cruzadas do Fichário (Carta-com-Carta)
+                    - **[Carta A] + [Carta B]**: [Explicação cirúrgica de no máximo 10 palavras].
+                    """
+                    res_text = call_gemini_api(api_key, prompt)
+                    st.markdown(res_text)
                     
+                    export_text = f"1 {cmd_name.split(' & ')[0]}\n" + "\n".join([f"1 {c['Carta']}" for c in valid_playables])
+                    st.text_area("Copiar para Moxfield / ManaBox:", value=export_text, height=120)
                 except Exception as e:
-                    st.error(f"Erro no processamento: {e}")
-
-        # --- MÓDULO DE UPGRADE DE DECK PRONTO vs FICHÁRIO ---
-        st.markdown("---")
-        st.write("### Módulo de Upgrade: Deck Pronto vs Fichário")
-        st.markdown("Já tem um deck montado? Cole a lista dele abaixo para descobrir **quais cartas do seu fichário sobem de nível o seu deck atual**.")
-        
-        user_decklist = st.text_area(
-            "Cole a sua lista atual de 100 cartas (Formato: 1 Nome da Carta):",
-            placeholder="1 Sol Ring\n1 Command Tower\n1 Cultivate\n1 Molt Tender...",
-            height=200
-        )
-        
-        if st.button("Analisar Upgrades do Fichário para o Deck", type="primary"):
-            if not user_decklist.strip():
-                st.warning("Por favor, cole a lista do seu deck antes de executar a análise de upgrade.")
-            else:
-                with st.spinner("Cruzando 100 cartas do seu deck com as cartas do fichário..."):
-                    try:
-                        cmd_name = st.session_state.get('commander_data', {}).get('name', 'Comandante')
-                        valid_playables = [c for c in st.session_state['playable_cards'] if c['Valida'] == "Sim"]
-                        
-                        binder_summary = "\n".join([
-                            f"- {c['Carta']} ({c['Tipo']}) | Sinergia: {c['Sinergia EDHREC']}"
-                            for c in valid_playables
-                        ])
-                        
-                        prompt = f"""
-                        Você é um especialista em otimização e upgrade de decks de MTG Commander.
-                        Analise o confronto entre a Lista de Deck Atual do jogador e as Cartas Escaneadas do Fichário.
-
-                        Comandante(s): {cmd_name}
-
-                        LISTA DO DECK ATUAL DO JOGADOR:
-                        {user_decklist.strip()}
-
-                        CARTAS DISPONÍVEIS NO FICHÁRIO DO JOGADOR:
-                        {binder_summary}
-
-                        Forneça um relatório CIRÚRGICO, DIRETO e OBJETIVO com as seguintes seções (e nada mais):
-
-                        ### Sugestões de Trocas Diretas (Upgrades Claros)
-                        Para cada carta do fichário que seja estritamente melhor ou mais sinérgica do que algo no deck:
-                        - **Entra (Fichário):** [Nome da Carta do Fichário]  
-                          **Sai (Deck):** [Nome da Carta a ser Removida]  
-                          **Motivo:** [Explicar a vantagem em no máximo 12 palavras].
-
-                        ### Novas Sinergias Triplas Criadas (Fichário + Deck + Comandante)
-                        Identifique duplas/combos formados entre uma carta do fichário e cartas que JÁ ESTAVAM no deck:
-                        - **[Carta do Fichário] + [Carta do Deck Atual]**: [Explicação cirúrgica do combo ou sinergia].
-                        """
-                        
-                        upgrade_res = call_gemini_api(api_key, prompt)
-                        st.session_state['last_upgrade_analysis'] = upgrade_res
-                        st.markdown(upgrade_res)
-                        
-                    except Exception as e:
-                        st.error(f"Erro ao processar análise de upgrade: {e}")
+                    st.error(f"Erro: {e}")
