@@ -8,7 +8,7 @@ import google.generativeai as genai
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.7.1 - Triagem, Sinergias e Otimização")
+st.subheader("Protótipo 0.7.2 - Triagem, Sinergias e Otimização")
 
 # --- OTIMIZAÇÃO DE IMAGEM PARA LOTES GRANDES ---
 def compress_image_for_api(pil_image, max_dim=1600):
@@ -163,7 +163,7 @@ if uploaded_files:
         status_text = st.empty()
         
         genai.configure(api_key=api_key)
-        candidate_models = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash']
+        candidate_models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
         
         failed_images = []
         
@@ -328,7 +328,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                         """
                         
                         genai.configure(api_key=api_key)
-                        candidate_models = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash']
+                        candidate_models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
                         
                         res = None
                         last_error = None
