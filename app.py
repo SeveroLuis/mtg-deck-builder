@@ -10,7 +10,7 @@ from fpdf import FPDF
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.9.0 - Suporte a Múltiplos Comandantes + Exportação PDF & Relatórios")
+st.subheader("Protótipo 0.9.1 - Correção Estável de Exportação PDF")
 
 # --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL ---
 @st.cache_data(ttl=3600)
@@ -210,38 +210,41 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- GERADOR DE PDF DO RELATÓRIO ---
+# --- GERADOR DE PDF DO RELATÓRIO (PROTEGIDO CONTRA ERROS DE LAYOUT) ---
 def generate_pdf_report(title_text, content_text):
-    """Gera um PDF limpo e formatado usando FPDF2."""
+    """Gera um PDF limpo e formatado usando FPDF2 com quebra segura de texto."""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
     # Cabeçalho
-    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_font("Helvetica", "B", 15)
     pdf.cell(0, 10, "MTG Commander Assistant - Relatorio", ln=True, align="C")
-    pdf.set_font("Helvetica", "I", 10)
+    pdf.set_font("Helvetica", "I", 9)
     pdf.cell(0, 6, f"Foco: {title_text}", ln=True, align="C")
-    pdf.ln(10)
+    pdf.ln(8)
     
     # Corpo do texto
     pdf.set_font("Helvetica", "", 10)
     
-    # Limpeza básica de caracteres especiais markdown para compatibilidade com Latin-1
     clean_text = content_text.encode('latin-1', 'replace').decode('latin-1')
     
     for line in clean_text.split('\n'):
-        # Substituições simples para formatação no PDF
-        line_clean = line.replace('#', '').replace('**', '')
+        line_clean = line.replace('#', '').replace('**', '').strip()
+        if not line_clean:
+            pdf.ln(3)
+            continue
+            
+        # Garante que linhas longas ou com pipes de tabelas Markdown sejam quebradas adequadamente
         if line.startswith("### "):
-            pdf.ln(4)
-            pdf.set_font("Helvetica", "B", 12)
-            pdf.cell(0, 8, line_clean.replace("### ", ""), ln=True)
+            pdf.ln(3)
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.multi_cell(0, 6, line_clean.replace("### ", ""))
             pdf.set_font("Helvetica", "", 10)
         elif line.startswith("- ") or line.startswith("* "):
-            pdf.multi_cell(0, 6, "  * " + line_clean[2:])
+            pdf.multi_cell(0, 5, "  * " + line_clean[2:])
         else:
-            pdf.multi_cell(0, 6, line_clean)
+            pdf.multi_cell(0, 5, line_clean)
             
     return bytes(pdf.output())
 
@@ -410,7 +413,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
     if st.button("Validar Coleção no Scryfall e EDHREC"):
         with st.spinner("Buscando dados em paralelo no EDHREC e Scryfall..."):
             cmd_data = st.session_state.get('commander_data', {})
-            cmd_name = cmd_data.get('name', '').split(" & ")[0] # EDHREC busca melhor pelo comandante principal
+            cmd_name = cmd_data.get('name', '').split(" & ")[0]
             cmd_colors = cmd_data.get('color_identity', [])
             
             edhrec_db = fetch_edhrec_full_metrics(cmd_name)
