@@ -477,8 +477,8 @@ def _process_single_card(item, cmd_colors, edhrec_db):
 
 if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
     st.markdown("---")
-    st.write("### Triagem da Coleção vs Comandante")
-    if st.button("Validar Coleção no Scryfall e EDHREC"):
+    st.write("### Análise das Cartas Baseada no Comandante")
+    if st.button("Analisar Cartas"):
         with st.spinner("Buscando dados em cache/APIs..."):
             cmd_data = st.session_state.get('commander_data', {})
             cmd_name = cmd_data.get('name', '').split(" & ")[0]
@@ -499,7 +499,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
             st.session_state['junk_cards'] = junk_cards
 
     if 'playable_cards' in st.session_state:
-        tab1, tab2 = st.tabs([f"Aproveitáveis ({len(st.session_state['playable_cards'])})", f"Descarte ({len(st.session_state['junk_cards'])})"])
+        tab1, tab2 = st.tabs([f"Aqui é Gameplay ({len(st.session_state['playable_cards'])})", f"Não Serve ({len(st.session_state['junk_cards'])})"])
         clean_list = lambda l: [{k: v for k, v in c.items() if not k.startswith("_")} for c in l]
 
         with tab1:
@@ -508,8 +508,8 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
             st.dataframe(clean_list(st.session_state['junk_cards']), use_container_width=True)
         
         st.markdown("---")
-        st.write("### Análise Cirúrgica de Sinergias Cruzadas")
-        if st.button("Gerar Matriz de Sinergias Carta-com-Carta", type="primary"):
+        st.write("### Análise de Sinergias")
+        if st.button("Gerar Raio-X de Sinergias", type="primary"):
             with st.spinner("Analisando interações..."):
                 try:
                     cmd_name = st.session_state.get('commander_data', {}).get('name', 'Comandante')
