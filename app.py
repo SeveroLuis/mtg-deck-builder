@@ -9,32 +9,49 @@ from concurrent.futures import ThreadPoolExecutor
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.7.5 - Triagem, Sinergias e Otimização")
+st.subheader("Protótipo 0.7.6 - Triagem, Sinergias e Otimização")
 
 # --- BUSCA E CACHE DA LISTA COMPLETA DE COMANDANTES DO SCRYFALL ---
 @st.cache_data(ttl=86400)
 def load_commander_list():
     """Busca a lista completa de nomes de Comandantes no Scryfall para busca instantânea."""
-    headers = {"User-Agent": "MTGCommanderAssistant/1.0", "Accept": "application/json"}
+    headers = {"User-Agent": "MTGCommanderAssistant/1.0 (https://github.com)", "Accept": "application/json"}
+    
+    # 1ª Tentativa: Catálogo oficial de comandantes do Scryfall
     try:
         url = "https://api.scryfall.com/catalog/commander-names"
-        res = requests.get(url, headers=headers, timeout=5)
+        res = requests.get(url, headers=headers, timeout=15)
         if res.status_code == 200:
             data = res.json().get("data", [])
-            if data:
-                return sorted(data)
+            if len(data) > 100:
+                return ["➕ Digitar outro comandante..."] + sorted(data)
     except Exception:
         pass
 
-    # Fallback com comandantes populares caso ocorra falha momentânea de rede
-    return sorted([
+    # 2ª Tentativa: Busca por cartas legais como comandante
+    try:
+        url = "https://api.scryfall.com/cards/search?q=is%3Acommander"
+        res = requests.get(url, headers=headers, timeout=15)
+        if res.status_code == 200:
+            cards = res.json().get("data", [])
+            names = [c.get("name") for c in cards if c.get("name")]
+            if len(names) > 50:
+                return ["➕ Digitar outro comandante..."] + sorted(list(set(names)))
+    except Exception:
+        pass
+
+    # Fallback expandido
+    fallback_list = sorted([
         "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
         "Yuriko, the Tiger's Shadow", "Urza, Lord High Artificer", 
         "Lathril, Blade of the Elves", "The Ur-Dragon", "Muldrotha, the Gravetide",
         "Prosper, Tome-Bound", "Nekusar, the Mindrazer", "Korvold, Fae-Cursed King",
         "Isshin, Two Heavens as One", "Sliver Overlord", "Kenrith, the Returned King",
-        "Golos, Tireless Pilgrim", "Meria, Scholar of Antiquity", "Jodah, the Unifier"
+        "Golos, Tireless Pilgrim", "Meria, Scholar of Antiquity", "Jodah, the Unifier",
+        "Animate Dead", "Zhulodok, Void Gorger", "Pantlaza, Sun-Favored",
+        "Voja, Jaws of the Conclave", "Stella Lee, Wild Card"
     ])
+    return ["➕ Digitar outro comandante..."] + fallback_list
 
 # --- TRADUÇÃO E SIMPLIFICAÇÃO DE TIPOS DE CARTAS ---
 def translate_type_line(type_line):
@@ -192,7 +209,7 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- BARRA LATERAL (SELEÇÃO DE COMANDANTE INSTANTÂNEA) ---
+# --- BARRA LATERAL (SELEÇÃO DE COMANDANTE INSTANTÂNEA E LIMPA) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -213,12 +230,17 @@ for idx, name in enumerate(commander_list):
         default_idx = idx
         break
 
-selected_commander = st.sidebar.selectbox(
-    "Digite ou selecione o Comandante:",
+selected_option = st.sidebar.selectbox(
+    "Comandante",
     options=commander_list,
     index=default_idx,
-    help="Ao clicar na caixa e digitar, a lista é filtrada instantaneamente sem precisar apertar ENTER."
+    label_visibility="collapsed"
 )
+
+if selected_option == "➕ Digitar outro comandante...":
+    selected_commander = st.sidebar.text_input("Digite o nome exato do comandante:", value="Atraxa, Praetors' Voice")
+else:
+    selected_commander = selected_option
 
 if selected_commander:
     commander_data = fetch_scryfall_card(selected_commander)
