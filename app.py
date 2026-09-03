@@ -285,7 +285,7 @@ if cmd_1_name:
 
 # --- MÉTODOS DE IMPORTAÇÃO DO FICHÁRIO (FOTOS OU TEXTO) ---
 st.write("### Leitura de Coleção e Fichários")
-import_tab1, import_tab2 = st.tabs(["📷 Enviar Fotos do Fichário", "📝 Digitar / Colar Lista de Cartas"])
+import_tab1, import_tab2 = st.tabs(["Enviar Fotos do Fichário", "Digitar / Colar Lista de Cartas"])
 
 with import_tab1:
     uploaded_files = st.file_uploader(
