@@ -212,20 +212,24 @@ def fetch_edhrec_full_metrics(commander_name):
 
 # --- GERADOR DE PDF DO RELATÓRIO (PROTEGIDO CONTRA ERROS DE LAYOUT) ---
 def generate_pdf_report(title_text, content_text):
-    """Gera um PDF limpo e formatado usando FPDF2 com quebra estrita de caracteres longos."""
-    pdf = FPDF()
-    pdf.add_page()
+    """Gera um PDF seguro com margens ajustadas e proteção contra estouro de linha."""
+    pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    
+    # Margens de segurança (15mm nas laterais)
+    pdf.set_left_margin(15)
+    pdf.set_right_margin(15)
     
     # Cabeçalho
-    pdf.set_font("Helvetica", "B", 15)
+    pdf.set_font("Helvetica", "B", 14)
     pdf.cell(0, 10, "MTG Commander Assistant - Relatorio", ln=True, align="C")
-    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_font("Helvetica", "I", 8)
     pdf.cell(0, 6, f"Foco: {title_text}", ln=True, align="C")
-    pdf.ln(8)
+    pdf.ln(5)
     
-    # Corpo do texto
-    pdf.set_font("Helvetica", "", 10)
+    # Corpo do texto com fonte menor para caber perfeitamente na largura útil
+    pdf.set_font("Helvetica", "", 9)
     
     clean_text = content_text.encode('latin-1', 'replace').decode('latin-1')
     
@@ -235,26 +239,27 @@ def generate_pdf_report(title_text, content_text):
             pdf.ln(3)
             continue
             
-        # Quebra linhas gigantes que não possuem espaços (evita o erro do FPDF)
+        # Garante que palavras muito longas ou sem espaços sejam quebradas a cada 30 caracteres
         words = line_clean.split(' ')
         safe_words = []
         for w in words:
-            if len(w) > 40: # Se uma palavra/termo tiver mais de 40 chars sem espaço, fatia ela
-                for i in range(0, len(w), 35):
-                    safe_words.append(w[i:i+35])
+            if len(w) > 30:
+                for i in range(0, len(w), 25):
+                    safe_words.append(w[i:i+25])
             else:
                 safe_words.append(w)
         line_safe = " ".join(safe_words)
         
+        # Largura útil real da página A4 (210mm - 30mm de margens = 180mm)
         if line.startswith("### "):
-            pdf.ln(3)
-            pdf.set_font("Helvetica", "B", 11)
-            pdf.multi_cell(0, 6, line_safe.replace("### ", ""))
-            pdf.set_font("Helvetica", "", 10)
+            pdf.ln(2)
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.multi_cell(180, 5, line_safe.replace("### ", ""))
+            pdf.set_font("Helvetica", "", 9)
         elif line.startswith("- ") or line.startswith("* "):
-            pdf.multi_cell(0, 5, "  * " + line_safe[2:])
+            pdf.multi_cell(180, 4.5, "  * " + line_safe[2:])
         else:
-            pdf.multi_cell(0, 5, line_safe)
+            pdf.multi_cell(180, 4.5, line_safe)
             
     return bytes(pdf.output())
 
