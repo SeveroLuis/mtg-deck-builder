@@ -8,7 +8,7 @@ import google.generativeai as genai
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.7 - Triagem, Sinergias e Otimização")
+st.subheader("Protótipo 0.7.1 - Triagem, Sinergias e Otimização")
 
 # --- OTIMIZAÇÃO DE IMAGEM PARA LOTES GRANDES ---
 def compress_image_for_api(pil_image, max_dim=1600):
@@ -163,7 +163,7 @@ if uploaded_files:
         status_text = st.empty()
         
         genai.configure(api_key=api_key)
-        candidate_models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-1.5-pro']
+        candidate_models = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash']
         
         failed_images = []
         
@@ -186,11 +186,12 @@ if uploaded_files:
                     try:
                         model = genai.GenerativeModel(m)
                         response = model.generate_content([prompt, optimized_img])
-                        break
+                        if response and hasattr(response, 'text') and response.text:
+                            break
                     except Exception:
                         continue
                 
-                if response:
+                if response and hasattr(response, 'text') and response.text:
                     raw_text = response.text.strip()
                     if "```" in raw_text:
                         parts = raw_text.split("```")
@@ -297,50 +298,61 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                     cmd_name = st.session_state.get('commander_data', {}).get('name', 'Comandante')
                     valid_playables = [c for c in st.session_state['playable_cards'] if c['Valida'] == "Sim"]
                     
-                    cards_data_prompt = "\n".join([
-                        f"- {c['Carta']} | Categoria: {c['Categoria EDHREC']} | Sinergia EDHREC: {c['Sinergia EDHREC']} | Texto: {c['OracleText'][:80]}"
-                        for c in valid_playables
-                    ])
-                    
-                    prompt = f"""
-                    Você é um analista estatístico de MTG Commander. Seja EXTREMAMENTE OBJETIVO, CIRÚRGICO e DIRETO. Sem introduções, saudações ou dicas de deckbuilding geral.
+                    if not valid_playables:
+                        st.warning("Não há cartas válidas e aproveitáveis suficientes para cruzar sinergias.")
+                    else:
+                        cards_data_prompt = "\n".join([
+                            f"- {c['Carta']} | Categoria: {c['Categoria EDHREC']} | Sinergia EDHREC: {c['Sinergia EDHREC']} | Texto: {c['OracleText'][:80]}"
+                            for c in valid_playables
+                        ])
+                        
+                        prompt = f"""
+                        Você é um analista estatístico de MTG Commander. Seja EXTREMAMENTE OBJETIVO, CIRÚRGICO e DIRETO. Sem introduções, saudações ou dicas de deckbuilding geral.
 
-                    Comandante: {cmd_name}
-                    
-                    Cartas aproveitáveis da coleção do jogador:
-                    {cards_data_prompt}
+                        Comandante: {cmd_name}
+                        
+                        Cartas aproveitáveis da coleção do jogador:
+                        {cards_data_prompt}
 
-                    Gere a análise ESTRITAMENTE nas 2 seções abaixo (não adicione nenhuma outra seção):
+                        Gere a análise ESTRITAMENTE nas 2 seções abaixo (não adicione nenhuma outra seção):
 
-                    ### Cartas Recomendadas da Coleção (Dados EDHREC)
-                    Crie uma tabela Markdown contendo:
-                    | Carta | Categoria Funcional | Inclusão (%) [Fonte: EDHREC] | Sinergia (%) [Fonte: EDHREC] | Função no Deck |
+                        ### Cartas Recomendadas da Coleção (Dados EDHREC)
+                        Crie uma tabela Markdown contendo:
+                        | Carta | Categoria Funcional | Inclusão (%) [Fonte: EDHREC] | Sinergia (%) [Fonte: EDHREC] | Função no Deck |
 
-                    ### Matriz de Sinergias Cruzadas do Fichário (Carta-com-Carta)
-                    Analise especificamente como as cartas escaneadas do jogador interagem ENTRE SI e com o comandante.
-                    Liste apenas duplas concretas de cartas presentes na coleção do jogador (ex: Carta A + Carta B).
-                    Use bullet points curtos:
-                    - **[Carta A] + [Carta B]**: [Explicação cirúrgica de no máximo 10 palavras da interação direta].
-                    """
-                    
-                    genai.configure(api_key=api_key)
-                    candidate_models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-1.5-pro']
-                    res = None
-                    for m in candidate_models:
-                        try:
-                            model = genai.GenerativeModel(m)
-                            res = model.generate_content(prompt)
-                            break
-                        except Exception:
-                            continue
-                            
-                    st.markdown(res.text)
-                    
-                    # Caixa de exportação no formato universal
-                    st.markdown("### Exportar Lista para Deckbuilder:")
-                    all_valid = valid_playables + [c for c in st.session_state['junk_cards'] if c['Valida'] == "Sim"]
-                    export_text = f"1 {cmd_name}\n" + "\n".join([f"1 {c['Carta']}" for c in all_valid])
-                    st.text_area("Copiar para Moxfield / ManaBox / Archidekt:", value=export_text, height=140)
+                        ### Matriz de Sinergias Cruzadas do Fichário (Carta-com-Carta)
+                        Analise especificamente como as cartas escaneadas do jogador interagem ENTRE SI e com o comandante.
+                        Liste apenas duplas concretas de cartas presentes na coleção do jogador (ex: Carta A + Carta B).
+                        Use bullet points curtos:
+                        - **[Carta A] + [Carta B]**: [Explicação cirúrgica de no máximo 10 palavras da interação direta].
+                        """
+                        
+                        genai.configure(api_key=api_key)
+                        candidate_models = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash']
+                        
+                        res = None
+                        last_error = None
+                        
+                        for m in candidate_models:
+                            try:
+                                model = genai.GenerativeModel(m)
+                                res = model.generate_content(prompt)
+                                if res and hasattr(res, 'text') and res.text:
+                                    break
+                            except Exception as e:
+                                last_error = e
+                                continue
+                                
+                        if res and hasattr(res, 'text') and res.text:
+                            st.markdown(res.text)
+                        else:
+                            st.error(f"Não foi possível obter resposta da API no momento. Erro retornado: {last_error if last_error else 'Falha de conexão com a API'}")
+                        
+                        # Caixa de exportação no formato universal
+                        st.markdown("### Exportar Lista para Deckbuilder:")
+                        all_valid = valid_playables + [c for c in st.session_state['junk_cards'] if c['Valida'] == "Sim"]
+                        export_text = f"1 {cmd_name}\n" + "\n".join([f"1 {c['Carta']}" for c in all_valid])
+                        st.text_area("Copiar para Moxfield / ManaBox / Archidekt:", value=export_text, height=140)
                     
                 except Exception as e:
-                    st.error(f"Erro: {e}")
+                    st.error(f"Erro no processamento: {e}")
