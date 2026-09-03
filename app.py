@@ -13,7 +13,6 @@ from concurrent.futures import ThreadPoolExecutor
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
     page_title="MTG Commander Assistant",
-    page_icon="⚔️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -22,7 +21,7 @@ st.set_page_config(
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 if not api_key:
-    st.error("⚠️ Erro de configuração: A chave GEMINI_API_KEY não foi encontrada nos Secrets do servidor.")
+    st.error("Erro de configuração: A chave GEMINI_API_KEY não foi encontrada nos Secrets do servidor.")
     st.stop()
 
 # --- ESTILIZAÇÃO VISUAL CUSTOMIZADA (TEMA DARK / MTG GAMING) ---
@@ -104,7 +103,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- CABEÇALHO PRINCIPAL ---
-st.title("⚔️ MTG Commander Assistant")
+st.title("MTG Commander Assistant")
 st.caption("Otimização Inteligente de Decks & Análise de Fichários por Visão Computacional")
 st.markdown("---")
 
@@ -372,7 +371,7 @@ def fetch_edhrec_full_metrics(commander_name):
     return edh_db
 
 # --- BARRA LATERAL ---
-st.sidebar.header("⚔️ Painel de Controle")
+st.sidebar.header("Painel de Controle")
 st.sidebar.subheader("Seleção de Comandante")
 
 search_term_1 = st.sidebar.text_input("Pesquisar Comandante (PT/EN):", placeholder="Ex: Atraxa, Tymna, Voz dos Pretores...", key="search_cmd_1")
@@ -388,7 +387,7 @@ if cmd_1_name:
     images_to_show = [c1_data['image_url']] if c1_data['image_url'] else []
     
     if c1_data.get("has_partner", False):
-        st.sidebar.info("💡 Este comandante permite Parceiro / Background!")
+        st.sidebar.info("Este comandante permite Parceiro / Background!")
         search_term_2 = st.sidebar.text_input("Pesquisar Comandante 2 / Background (PT/EN):", placeholder="Ex: Kraum, Shadowheart...", key="search_cmd_2")
         filtered_2 = search_commanders_scryfall(search_term_2)
         cmd_2_name = st.sidebar.selectbox("Segundo Comandante / Background:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
@@ -410,7 +409,7 @@ if cmd_1_name:
         st.sidebar.image(img_url, use_container_width=True)
 
 # --- ESCANEAMENTO ---
-st.write("### 📸 Leitura de Coleção e Fichários em Lote")
+st.write("### Leitura de Coleção e Fichários em Lote")
 uploaded_files = st.file_uploader("Envie as fotos do seu fichário (Aceita qualquer idioma):", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
 
 if uploaded_files:
@@ -480,7 +479,7 @@ def _process_single_card(item, cmd_colors, edhrec_db):
 
 if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
     st.markdown("---")
-    st.write("### 🔍 Triagem da Coleção vs Comandante")
+    st.write("### Triagem da Coleção vs Comandante")
     if st.button("Validar Coleção no Scryfall e EDHREC"):
         with st.spinner("Buscando dados em cache/APIs..."):
             cmd_data = st.session_state.get('commander_data', {})
@@ -511,7 +510,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
             st.dataframe(clean_list(st.session_state['junk_cards']), use_container_width=True)
         
         st.markdown("---")
-        st.write("### 🧬 Análise Cirúrgica de Sinergias Cruzadas")
+        st.write("### Análise Cirúrgica de Sinergias Cruzadas")
         if st.button("Gerar Matriz de Sinergias Carta-com-Carta", type="primary"):
             with st.spinner("Analisando interações..."):
                 try:
