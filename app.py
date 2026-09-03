@@ -376,6 +376,8 @@ search_term_1 = st.sidebar.text_input("Nome do Comandante:", placeholder="Ex: Ha
 filtered_1 = search_commanders_scryfall(search_term_1)
 cmd_1_name = st.sidebar.selectbox("Selecione o Comandante:", options=filtered_1, index=0, key="sel_cmd_1") if filtered_1 else None
 
+cmd_2_name = None
+
 if cmd_1_name:
     c1_data = fetch_scryfall_card(cmd_1_name)
     combined_colors = set(c1_data.get("color_identity", []))
@@ -398,7 +400,6 @@ if cmd_1_name:
     final_color_list = sorted(list(combined_colors))
     st.session_state['commander_data'] = {"name": display_name, "color_identity": final_color_list, "found": True}
     
-    st.sidebar.markdown("---")
     st.sidebar.subheader(f"Deck: {display_name}")
     st.sidebar.caption(f"Cores: {', '.join(final_color_list) if final_color_list else 'Incolor'}")
     for img_url in images_to_show:
