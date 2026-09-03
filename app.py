@@ -12,27 +12,42 @@ st.subheader("Protótipo 0.3 - Validação no Scryfall e Identidade de Cor")
 # --- FUNÇÕES AUXILIARES DA API SCRYFALL ---
 @st.cache_data(ttl=3600)
 def fetch_scryfall_card(card_name):
-    """Busca dados de uma carta no Scryfall pelo nome."""
-    url = f"https://api.scryfall.com/cards/named?fuzzy={requests.utils.quote(card_name)}"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        
-        # Trata cartas de duas faces (Double-faced cards)
-        image_url = ""
-        if "image_uris" in data:
-            image_url = data["image_uris"].get("normal", "")
-        elif "card_faces" in data and "image_uris" in data["card_faces"][0]:
-            image_url = data["card_faces"][0]["image_uris"].get("normal", "")
+    """Busca dados de uma carta no Scryfall pelo nome com User-Agent apropriado."""
+    if not card_name or not card_name.strip():
+        return {"name": "", "found": False, "color_identity": [], "type_line": "", "image_url": ""}
+    
+    # Identificação para não ser bloqueado pelos servidores do Scryfall
+    headers = {
+        "User-Agent": "MTGCommanderAssistant/1.0 (Personal Project)",
+        "Accept": "application/json"
+    }
+    
+    encoded_name = requests.utils.quote(card_name.strip())
+    url = f"https://api.scryfall.com/cards/named?fuzzy={encoded_name}"
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
             
-        return {
-            "name": data.get("name", card_name),
-            "color_identity": data.get("color_identity", []),
-            "type_line": data.get("type_line", ""),
-            "oracle_text": data.get("oracle_text", ""),
-            "image_url": image_url,
-            "found": True
-        }
+            # Trata cartas de duas faces (Double-faced cards)
+            image_url = ""
+            if "image_uris" in data:
+                image_url = data["image_uris"].get("normal", "")
+            elif "card_faces" in data and len(data["card_faces"]) > 0 and "image_uris" in data["card_faces"][0]:
+                image_url = data["card_faces"][0]["image_uris"].get("normal", "")
+                
+            return {
+                "name": data.get("name", card_name),
+                "color_identity": data.get("color_identity", []),
+                "type_line": data.get("type_line", ""),
+                "oracle_text": data.get("oracle_text", ""),
+                "image_url": image_url,
+                "found": True
+            }
+    except Exception as e:
+        pass
+        
     return {"name": card_name, "found": False, "color_identity": [], "type_line": "", "image_url": ""}
 
 def is_color_valid(card_colors, commander_colors):
