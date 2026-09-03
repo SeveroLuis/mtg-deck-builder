@@ -14,10 +14,10 @@ st.subheader("Protótipo 0.7.6 - Triagem, Sinergias e Otimização")
 # --- BUSCA E CACHE DA LISTA COMPLETA DE COMANDANTES DO SCRYFALL ---
 @st.cache_data(ttl=86400)
 def load_commander_list():
-    """Busca a lista completa de nomes de Comandantes no Scryfall para busca instantânea."""
+    """Busca a lista completa de nomes de Comandantes no Scryfall para busca e autocomplete instantâneo."""
     headers = {"User-Agent": "MTGCommanderAssistant/1.0 (https://github.com)", "Accept": "application/json"}
     
-    # 1ª Tentativa: Catálogo oficial de comandantes do Scryfall
+    # 1ª Tentativa: Catálogo oficial de comandantes do Scryfall (~2.000+ comandantes)
     try:
         url = "https://api.scryfall.com/catalog/commander-names"
         res = requests.get(url, headers=headers, timeout=15)
@@ -209,7 +209,7 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- BARRA LATERAL (DUAS CAIXAS DE PESQUISA REATIVAS) ---
+# --- BARRA LATERAL (CAIXA ÚNICA COM AUTOCOMPLETE NATIVO) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -224,35 +224,19 @@ st.sidebar.subheader("Escolher Comandante")
 
 commander_list = load_commander_list()
 
-# Caixa 1: Campo de digitação livre
-search_term = st.sidebar.text_input(
-    "Buscar comandante:",
-    placeholder="Digite para filtrar (ex: krenko)",
-    label_visibility="collapsed"
-)
-
-# Filtragem dinâmica conforme a digitação
-if search_term.strip():
-    term = search_term.strip().lower()
-    matches = [c for c in commander_list if term in c.lower()]
-    options = matches if matches else [search_term.strip()]
-else:
-    options = commander_list
-
-# Encontrar o índice padrão de Atraxa se a busca estiver vazia
+# Descobrir índice padrão de Atraxa
 default_idx = 0
-if not search_term.strip():
-    for idx, name in enumerate(options):
-        if "Atraxa, Praetors' Voice" in name:
-            default_idx = idx
-            break
+for idx, name in enumerate(commander_list):
+    if "Atraxa, Praetors' Voice" in name:
+        default_idx = idx
+        break
 
-# Caixa 2: Menu de seleção das sugestões
+# CAIXA ÚNICA: O usuário digita qualquer letra e o Streamlit filtra a lista na hora!
 selected_commander = st.sidebar.selectbox(
-    "Sugestões:",
-    options=options,
-    index=default_idx if default_idx < len(options) else 0,
-    label_visibility="collapsed"
+    "Digite as primeiras letras para buscar:",
+    options=commander_list,
+    index=default_idx,
+    placeholder="Digite para buscar (ex: krenko)..."
 )
 
 if selected_commander:
@@ -398,7 +382,6 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
             f"Fora do Radar / Descarte ({len(st.session_state['junk_cards'])} cartas)"
         ])
         
-        # Preparar dataframes omitindo chave interna do OracleText
         def clean_display_list(card_list):
             return [
                 {k: v for k, v in c.items() if not k.startswith("_")}
