@@ -31,25 +31,9 @@ if uploaded_file:
     
     with col2:
         if st.button("🔍 Escanear e Listar Cartas", type="primary"):
-            with st.spinner("Buscando modelo ativo e analisando a imagem..."):
+            with st.spinner("Analisando a imagem com a IA..."):
                 try:
                     genai.configure(api_key=api_key)
-                    
-                    # Auto-detecção de modelos disponíveis na sua chave
-                    all_models = list(genai.list_models())
-                    valid_models = [
-                        m.name for m in all_models 
-                        if 'generateContent' in m.supported_generation_methods
-                    ]
-                    
-                    if not valid_models:
-                        st.error("Nenhum modelo de geração de conteúdo encontrado para sua API Key.")
-                        st.stop()
-                    
-                    # Escolhe preferencialmente um modelo 'flash', ou pega o primeiro ativo
-                    selected_model = next((m for m in valid_models if 'flash' in m.lower()), valid_models[0])
-                    
-                    model = genai.GenerativeModel(selected_model)
                     
                     prompt = """
                     Você é um especialista em Magic: The Gathering (MTG).
@@ -68,7 +52,32 @@ if uploaded_file:
                     ]
                     """
                     
-                    response = model.generate_content([prompt, image])
+                    # Lista de modelos candidatos para testar em ordem de prioridade
+                    candidate_models = [
+                        'gemini-1.5-flash',
+                        'gemini-2.0-flash',
+                        'gemini-2.5-flash',
+                        'gemini-3.6-flash',
+                        'gemini-1.5-pro'
+                    ]
+                    
+                    response = None
+                    used_model = ""
+                    last_error = None
+                    
+                    # Testa cada modelo sequencialmente até encontrar um que a API aceite
+                    for model_name in candidate_models:
+                        try:
+                            model = genai.GenerativeModel(model_name)
+                            response = model.generate_content([prompt, image])
+                            used_model = model_name
+                            break
+                        except Exception as err:
+                            last_error = err
+                            continue
+                    
+                    if not response:
+                        raise Exception(f"Nenhum modelo aceitou a conexão. Último erro: {last_error}")
                     
                     raw_text = response.text.strip()
                     
@@ -86,7 +95,7 @@ if uploaded_file:
                     cards_data = json.loads(raw_text)
                     
                     st.session_state['detected_cards'] = cards_data
-                    st.success(f"✨ {len(cards_data)} carta(s) identificada(s) usando o modelo ({selected_model.replace('models/', '')})!")
+                    st.success(f"✨ {len(cards_data)} carta(s) identificada(s) com sucesso usando o modelo **{used_model}**!")
                     
                 except Exception as e:
                     st.error(f"Erro de processamento: {e}")
