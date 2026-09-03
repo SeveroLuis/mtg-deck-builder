@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.9.2 - Versão Otimizada sem PDF")
+st.subheader("Protótipo 0.9.3 - Correção de String Literal")
 
 # --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL ---
 @st.cache_data(ttl=3600)
@@ -25,12 +25,12 @@ def search_commanders_scryfall(query_term):
         ]
 
     headers = {
-        "User-Agent": "MTGCommanderAssistant/1.0 (https://github.com)",
+        "User-Agent": "MTGCommanderAssistant/1.0 ([https://github.com](https://github.com))",
         "Accept": "application/json"
     }
     
     encoded_query = requests.utils.quote(f'is:commander name:"{query_term.strip()}"')
-    url = f"https://api.scryfall.com/cards/search?q={encoded_query}&order=name"
+    url = f"[https://api.scryfall.com/cards/search?q=](https://api.scryfall.com/cards/search?q=){encoded_query}&order=name"
     
     try:
         res = requests.get(url, headers=headers, timeout=6)
@@ -43,7 +43,7 @@ def search_commanders_scryfall(query_term):
         pass
 
     try:
-        auto_url = f"https://api.scryfall.com/cards/autocomplete?q={requests.utils.quote(query_term.strip())}"
+        auto_url = f"[https://api.scryfall.com/cards/autocomplete?q=](https://api.scryfall.com/cards/autocomplete?q=){requests.utils.quote(query_term.strip())}"
         res = requests.get(auto_url, headers=headers, timeout=5)
         if res.status_code == 200:
             names = res.json().get("data", [])
@@ -145,12 +145,12 @@ def fetch_scryfall_card(card_name):
     
     headers = {"User-Agent": "MTGCommanderAssistant/1.0", "Accept": "application/json"}
     encoded_name = requests.utils.quote(card_name.strip())
-    url = f"https://api.scryfall.com/cards/named?exact={encoded_name}"
+    url = f"[https://api.scryfall.com/cards/named?exact=](https://api.scryfall.com/cards/named?exact=){encoded_name}"
     
     try:
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code != 200:
-            url = f"https://api.scryfall.com/cards/named?fuzzy={encoded_name}"
+            url = f"[https://api.scryfall.com/cards/named?fuzzy=](https://api.scryfall.com/cards/named?fuzzy=){encoded_name}"
             response = requests.get(url, headers=headers, timeout=5)
             
         if response.status_code == 200:
@@ -182,7 +182,7 @@ def fetch_edhrec_full_metrics(commander_name):
     """Puxa o banco do EDHREC e retorna métricas exatas de Inclusão e Sinergia."""
     headers = {"User-Agent": "MTGCommanderAssistant/1.0"}
     slug = commander_name.lower().replace("'", "").replace(",", "").replace(" ", "-")
-    url = f"https://json.edhrec.com/pages/commanders/{slug}.json"
+    url = f"[https://json.edhrec.com/pages/commanders/](https://json.edhrec.com/pages/commanders/){slug}.json"
     
     edh_db = {}
     try:
@@ -251,63 +251,3 @@ if cmd_1_name:
     
     if cmd_2_name:
         c2_data = fetch_scryfall_card(cmd_2_name)
-        combined_colors.update(c2_data.get("color_identity", []))
-        display_name += f" & {c2_data['name']}"
-        if c2_data['image_url']:
-            images_to_show.append(c2_data['image_url'])
-            
-    final_color_list = sorted(list(combined_colors))
-    
-    st.session_state['commander_data'] = {
-        "name": display_name,
-        "color_identity": final_color_list,
-        "found": True
-    }
-    
-    st.sidebar.markdown("---")
-    st.sidebar.subheader(f"Deck: {display_name}")
-    st.sidebar.caption(f"Identidade de Cores Unificada: {', '.join(final_color_list) if final_color_list else 'Incolor'}")
-    for img_url in images_to_show:
-        st.sidebar.image(img_url, use_container_width=True)
-
-# --- UPLOAD MULTI-IMAGEM DE FICHÁRIOS ---
-st.write("### Leitura de Coleção e Fichários em Lote")
-uploaded_files = st.file_uploader(
-    "Envie as fotos das páginas do seu fichário (Selecione múltiplas fotos de uma vez):",
-    type=["jpg", "jpeg", "png", "webp"],
-    accept_multiple_files=True
-)
-
-if uploaded_files:
-    st.write(f"**{len(uploaded_files)} foto(s) carregada(s).**")
-    
-    with st.expander("Ver fotos carregadas", expanded=False):
-        cols = st.columns(min(4, len(uploaded_files)))
-        for idx, file in enumerate(uploaded_files):
-            cols[idx % 4].image(Image.open(file), caption=file.name, use_container_width=True)
-            
-    if st.button("Escanear Todas as Fotos e Compilar Coleção", type="primary"):
-        all_cards_map = {}
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        failed_images = []
-        
-        for idx, file in enumerate(uploaded_files):
-            status_text.text(f"Otimizando e analisando imagem {idx+1} de {len(uploaded_files)} ({file.name})...")
-            try:
-                raw_img = Image.open(file)
-                optimized_img = compress_image_for_api(raw_img)
-                
-                prompt = """
-                Analise a imagem enviada (página de fichário com cartas de MTG).
-                Identifique todas as cartas de MTG visíveis.
-                Responda APENAS com um array JSON válido:
-                [{"card_name": "Sol Ring", "qty": 1}]
-                Nome oficial em inglês.
-                """
-                
-                raw_text = call_gemini_api(api_key, prompt, optimized_img)
-                
-                if "```" in raw_text:
-                    parts = raw_text.split("
