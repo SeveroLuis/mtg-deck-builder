@@ -212,7 +212,7 @@ def fetch_edhrec_full_metrics(commander_name):
 
 # --- GERADOR DE PDF DO RELATÓRIO (PROTEGIDO CONTRA ERROS DE LAYOUT) ---
 def generate_pdf_report(title_text, content_text):
-    """Gera um PDF limpo e formatado usando FPDF2 com quebra segura de texto."""
+    """Gera um PDF limpo e formatado usando FPDF2 com quebra estrita de caracteres longos."""
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -235,16 +235,26 @@ def generate_pdf_report(title_text, content_text):
             pdf.ln(3)
             continue
             
-        # Garante que linhas longas ou com pipes de tabelas Markdown sejam quebradas adequadamente
+        # Quebra linhas gigantes que não possuem espaços (evita o erro do FPDF)
+        words = line_clean.split(' ')
+        safe_words = []
+        for w in words:
+            if len(w) > 40: # Se uma palavra/termo tiver mais de 40 chars sem espaço, fatia ela
+                for i in range(0, len(w), 35):
+                    safe_words.append(w[i:i+35])
+            else:
+                safe_words.append(w)
+        line_safe = " ".join(safe_words)
+        
         if line.startswith("### "):
             pdf.ln(3)
             pdf.set_font("Helvetica", "B", 11)
-            pdf.multi_cell(0, 6, line_clean.replace("### ", ""))
+            pdf.multi_cell(0, 6, line_safe.replace("### ", ""))
             pdf.set_font("Helvetica", "", 10)
         elif line.startswith("- ") or line.startswith("* "):
-            pdf.multi_cell(0, 5, "  * " + line_clean[2:])
+            pdf.multi_cell(0, 5, "  * " + line_safe[2:])
         else:
-            pdf.multi_cell(0, 5, line_clean)
+            pdf.multi_cell(0, 5, line_safe)
             
     return bytes(pdf.output())
 
