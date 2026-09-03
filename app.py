@@ -385,7 +385,6 @@ if cmd_1_name:
     images_to_show = [c1_data['image_url']] if c1_data['image_url'] else []
     
     if c1_data.get("has_partner", False):
-        st.sidebar.info("Este comandante permite Parceiro/Background!")
         search_term_2 = st.sidebar.text_input("Nome do Parceiro/Background:", placeholder="Ex: Samwise, Haunted One", key="search_cmd_2")
         filtered_2 = search_commanders_scryfall(search_term_2)
         cmd_2_name = st.sidebar.selectbox("Selecione o Parceiro/Background:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
