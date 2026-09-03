@@ -10,10 +10,103 @@ from PIL import Image
 import google.generativeai as genai
 from concurrent.futures import ThreadPoolExecutor
 
-st.set_page_config(page_title="MTG Commander Assistant v1.0", layout="wide")
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(
+    page_title="MTG Commander Assistant",
+    page_icon="⚔️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-st.title("MTG Commander Assistant")
-st.subheader("Versão 1.0.0 - Cache Persistente, Resiliência e Lançamento Oficial")
+# --- CARREGAMENTO INVISÍVEL DA CHAVE ---
+api_key = st.secrets.get("GEMINI_API_KEY", "")
+
+if not api_key:
+    st.error("⚠️ Erro de configuração: A chave GEMINI_API_KEY não foi encontrada nos Secrets do servidor.")
+    st.stop()
+
+# --- ESTILIZAÇÃO VISUAL CUSTOMIZADA (TEMA DARK / MTG GAMING) ---
+st.markdown("""
+<style>
+    /* 1. Esconder cabeçalho, rodapé e marca nativa do Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* 2. Fundo geral e tipografia */
+    .stApp {
+        background-color: #0b0f19;
+        color: #e2e8f0;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    
+    /* 3. Barra Lateral (Sidebar) com fundo Dark Slate */
+    [data-testid="stSidebar"] {
+        background-color: #111827 !important;
+        border-right: 1px solid #1f2937;
+    }
+    
+    /* 4. Títulos e Subtítulos em destaque */
+    h1, h2, h3 {
+        color: #f8fafc !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.02em;
+    }
+    
+    /* 5. Botões modernos em azul/roxo degradê */
+    .stButton>button {
+        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.65rem 1.2rem !important;
+        font-weight: 600 !important;
+        transition: all 0.2s ease-in-out !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 15px rgba(99, 102, 241, 0.4) !important;
+    }
+    
+    /* 6. Abas estilizadas (Tabs) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #1e293b;
+        padding: 6px;
+        border-radius: 10px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 6px;
+        color: #94a3b8;
+        font-weight: 600;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #3b82f6 !important;
+        color: #ffffff !important;
+    }
+    
+    /* 7. Caixas de texto, inputs e uploaders */
+    .stTextArea textarea, .stTextInput input {
+        background-color: #0f172a !important;
+        color: #f8fafc !important;
+        border: 1px solid #334155 !important;
+        border-radius: 8px !important;
+    }
+    
+    /* 8. Estilo de Dataframes e tabelas */
+    [data-testid="stDataFrame"] {
+        border: 1px solid #1f2937;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- CABEÇALHO PRINCIPAL ---
+st.title("⚔️ MTG Commander Assistant")
+st.caption("Otimização Inteligente de Decks & Análise de Fichários por Visão Computacional")
+st.markdown("---")
 
 # --- BANCO DE DADOS SQLITE PARA CACHE PERSISTENTE ---
 DB_NAME = "mtg_cache.db"
@@ -48,7 +141,6 @@ def get_cached_data(table, key):
         row = c.fetchone()
         conn.close()
         if row:
-            # Cache válido por 7 dias (604800 segundos)
             if time.time() - row[1] < 604800:
                 return json.loads(row[0])
     except Exception:
@@ -75,7 +167,7 @@ def get_http_session():
     session = requests.Session()
     retries = Retry(
         total=4,
-        backoff_factor=1,  # Aguarda 1s, 2s, 4s entre tentativas em falhas ou Rate Limit (429)
+        backoff_factor=1,
         status_forcelist=[429, 500, 502, 503, 504],
         raise_on_status=False
     )
@@ -107,7 +199,7 @@ def search_commanders_scryfall(query_term):
     url = f"https://api.scryfall.com/cards/search?q={encoded_query}&order=name"
     
     try:
-        time.sleep(0.05) # Respeita política de delay do Scryfall (50ms)
+        time.sleep(0.05)
         res = HTTP.get(url, headers=headers, timeout=6)
         if res.status_code == 200:
             data = res.json().get("data", [])
@@ -279,15 +371,8 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- CARREGAMENTO INVISÍVEL DA CHAVE ---
-api_key = st.secrets.get("GEMINI_API_KEY", "")
-
-if not api_key:
-    st.error("Erro de configuração: A chave GEMINI_API_KEY não foi encontrada nos Secrets do servidor.")
-    st.stop()
-
 # --- BARRA LATERAL ---
-st.sidebar.header("Navegação e Comandante")
+st.sidebar.header("⚔️ Painel de Controle")
 st.sidebar.subheader("Seleção de Comandante")
 
 search_term_1 = st.sidebar.text_input("Pesquisar Comandante (PT/EN):", placeholder="Ex: Atraxa, Tymna, Voz dos Pretores...", key="search_cmd_1")
@@ -325,7 +410,7 @@ if cmd_1_name:
         st.sidebar.image(img_url, use_container_width=True)
 
 # --- ESCANEAMENTO ---
-st.write("### Leitura de Coleção e Fichários em Lote")
+st.write("### 📸 Leitura de Coleção e Fichários em Lote")
 uploaded_files = st.file_uploader("Envie as fotos do seu fichário (Aceita qualquer idioma):", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
 
 if uploaded_files:
@@ -395,7 +480,7 @@ def _process_single_card(item, cmd_colors, edhrec_db):
 
 if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
     st.markdown("---")
-    st.write("### Triagem da Coleção vs Comandante")
+    st.write("### 🔍 Triagem da Coleção vs Comandante")
     if st.button("Validar Coleção no Scryfall e EDHREC"):
         with st.spinner("Buscando dados em cache/APIs..."):
             cmd_data = st.session_state.get('commander_data', {})
@@ -426,7 +511,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
             st.dataframe(clean_list(st.session_state['junk_cards']), use_container_width=True)
         
         st.markdown("---")
-        st.write("### Análise Cirúrgica de Sinergias Cruzadas")
+        st.write("### 🧬 Análise Cirúrgica de Sinergias Cruzadas")
         if st.button("Gerar Matriz de Sinergias Carta-com-Carta", type="primary"):
             with st.spinner("Analisando interações..."):
                 try:
