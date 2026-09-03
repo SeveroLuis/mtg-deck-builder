@@ -398,8 +398,7 @@ if cmd_1_name:
     final_color_list = sorted(list(combined_colors))
     st.session_state['commander_data'] = {"name": display_name, "color_identity": final_color_list, "found": True}
     
-    st.sidebar.markdown("---")
-    st.sidebar.subheader(f"Deck: {display_name}")
+   st.sidebar.subheader(f"Deck: {display_name}")
     st.sidebar.caption(f"Cores: {', '.join(final_color_list) if final_color_list else 'Incolor'}")
     for img_url in images_to_show:
         st.sidebar.image(img_url, use_container_width=True)
