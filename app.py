@@ -9,9 +9,9 @@ from concurrent.futures import ThreadPoolExecutor
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.7.8 - Busca Dinâmica Universal de Comandantes")
+st.subheader("Protótipo 0.8.0 - Busca Otimizada + Módulo Upgrade de Deck")
 
-# --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL (SEM LIMITES DE LISTA LOCAL) ---
+# --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL ---
 @st.cache_data(ttl=3600)
 def search_commanders_scryfall(query_term):
     """
@@ -19,7 +19,6 @@ def search_commanders_scryfall(query_term):
     Garante suporte total a Universes Beyond, edições recentes e lendárias raras.
     """
     if not query_term or len(query_term.strip()) < 2:
-        # Sugestões iniciais famosas para quando a caixa de busca estiver vazia
         return [
             "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
             "Yuriko, the Tiger's Shadow", "Urza, Lord High Artificer", 
@@ -45,7 +44,6 @@ def search_commanders_scryfall(query_term):
     except Exception:
         pass
 
-    # Fallback via Autocomplete oficial do Scryfall caso a busca avançada retorne vazio
     try:
         auto_url = f"https://api.scryfall.com/cards/autocomplete?q={requests.utils.quote(query_term.strip())}"
         res = requests.get(auto_url, headers=headers, timeout=5)
@@ -226,14 +224,12 @@ st.sidebar.success("API Ativa")
 st.sidebar.markdown("---")
 st.sidebar.subheader("Escolher Comandante")
 
-# 1. Campo de busca direta
 search_term = st.sidebar.text_input(
     "Pesquisar Comandante:",
     placeholder="Ex: Frodo, Shadowheart, Hazel, Hamza...",
     key="search_commander_input"
 )
 
-# 2. Busca dinâmica na API do Scryfall com base no termo digitado
 filtered_commanders = search_commanders_scryfall(search_term)
 
 selected_commander = None
@@ -368,7 +364,6 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
             playable_cards = []
             junk_cards = []
             
-            # Processamento acelerado em paralelo
             with ThreadPoolExecutor(max_workers=10) as executor:
                 futures = [
                     executor.submit(_process_single_card, item, cmd_colors, edhrec_db)
@@ -452,7 +447,6 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                         res_text = call_gemini_api(api_key, prompt)
                         st.markdown(res_text)
                         
-                        # Caixa de exportação no formato universal
                         st.markdown("### Exportar Lista para Deckbuilder:")
                         all_valid = valid_playables + [c for c in st.session_state['junk_cards'] if c['Valida'] == "Sim"]
                         export_text = f"1 {cmd_name}\n" + "\n".join([f"1 {c['Carta']}" for c in all_valid])
@@ -460,3 +454,59 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                     
                 except Exception as e:
                     st.error(f"Erro no processamento: {e}")
+
+        # --- NOVO MÓDULO: ANÁLISE DE UPGRADE DE DECK PRONTO vs FICHÁRIO ---
+        st.markdown("---")
+        st.write("### Módulo de Upgrade: Deck Pronto vs Fichário")
+        st.markdown("Já tem um deck montado? Cole a lista dele abaixo para descobrir **quais cartas do seu fichário sobem de nível o seu deck atual**.")
+        
+        user_decklist = st.text_area(
+            "Cole a sua lista atual de 100 cartas (Formato: 1 Nome da Carta):",
+            placeholder="1 Sol Ring\n1 Command Tower\n1 Cultivate\n1 Molt Tender...",
+            height=200
+        )
+        
+        if st.button("Analisar Upgrades do Fichário para o Deck", type="primary"):
+            if not user_decklist.strip():
+                st.warning("Por favor, cole a lista do seu deck antes de executar a análise de upgrade.")
+            else:
+                with st.spinner("Cruzando 100 cartas do seu deck com as cartas do fichário..."):
+                    try:
+                        cmd_name = st.session_state.get('commander_data', {}).get('name', 'Comandante')
+                        valid_playables = [c for c in st.session_state['playable_cards'] if c['Valida'] == "Sim"]
+                        
+                        binder_summary = "\n".join([
+                            f"- {c['Carta']} ({c['Tipo']}) | Sinergia: {c['Sinergia EDHREC']}"
+                            for c in valid_playables
+                        ])
+                        
+                        prompt = f"""
+                        Você é um especialista em otimização e upgrade de decks de MTG Commander.
+                        Analise o confronto entre a Lista de Deck Atual do jogador e as Cartas Escaneadas do Fichário.
+
+                        Comandante: {cmd_name}
+
+                        LISTA DO DECK ATUAL DO JOGADOR:
+                        {user_decklist.strip()}
+
+                        CARTAS DISPONÍVEIS NO FICHÁRIO DO JOGADOR:
+                        {binder_summary}
+
+                        Forneça um relatório CIRÚRGICO, DIRETO e OBJETIVO com as seguintes seções (e nada mais):
+
+                        ### Sugestões de Trocas Diretas (Upgrades Claros)
+                        Para cada carta do fichário que seja estritamente melhor ou mais sinérgica do que algo no deck:
+                        - **Entra (Fichário):** [Nome da Carta do Fichário]  
+                          **Sai (Deck):** [Nome da Carta a ser Removida]  
+                          **Motivo:** [Explicar a vantagem em no máximo 12 palavras].
+
+                        ### Novas Sinergias Triplas Criadas (Fichário + Deck + Comandante)
+                        Identifique duplas/combos formados entre uma carta do fichário e cartas que JÁ ESTAVAM no deck:
+                        - **[Carta do Fichário] + [Carta do Deck Atual]**: [Explicação cirúrgica do combo ou sinergia].
+                        """
+                        
+                        upgrade_res = call_gemini_api(api_key, prompt)
+                        st.markdown(upgrade_res)
+                        
+                    except Exception as e:
+                        st.error(f"Erro ao processar análise de upgrade: {e}")
