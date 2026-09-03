@@ -9,43 +9,30 @@ from concurrent.futures import ThreadPoolExecutor
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.7.6 - Triagem, Sinergias e Otimização")
+st.subheader("Protótipo 0.7.7 - Busca Otimizada e Afunilada")
 
-# --- BUSCA E CACHE DA LISTA COMPLETA DE COMANDANTES DO SCRYFALL ---
+# --- BUSCA E CACHE DA LISTA EXCLUSIVA DE COMANDANTES DO SCRYFALL ---
 @st.cache_data(ttl=86400)
 def load_commander_list():
-    """Busca a lista completa de nomes de Comandantes no Scryfall, filtrando versoes digitais (A-)."""
+    """Busca APENAS a lista oficial de Comandantes no Scryfall (sem carregar cartas normais)."""
     headers = {
         "User-Agent": "MTGCommanderAssistant/1.0 (https://github.com)",
         "Accept": "application/json"
     }
     
-    # 1ª Tentativa: Catálogo oficial de comandantes do Scryfall
     try:
         url = "https://api.scryfall.com/catalog/commander-names"
-        res = requests.get(url, headers=headers, timeout=12)
+        res = requests.get(url, headers=headers, timeout=10)
         if res.status_code == 200:
             data = res.json().get("data", [])
-            # FILTRO: Remove cartas digitais/Alchemy que começam com "A-"
+            # Elimina cartas digitais do Arena que começam com "A-"
             clean_data = [name for name in data if not name.startswith("A-")]
-            if len(clean_data) > 500:
+            if len(clean_data) > 100:
                 return sorted(clean_data)
     except Exception:
         pass
 
-    # 2ª Tentativa: Catálogo geral de nomes de cartas
-    try:
-        url = "https://api.scryfall.com/catalog/card-names"
-        res = requests.get(url, headers=headers, timeout=12)
-        if res.status_code == 200:
-            data = res.json().get("data", [])
-            clean_data = [name for name in data if not name.startswith("A-")]
-            if len(clean_data) > 500:
-                return sorted(clean_data)
-    except Exception:
-        pass
-
-    # Fallback de segurança limpo
+    # Fallback leve de segurança apenas com comandantes
     fallback_list = [
         "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
         "Yuriko, the Tiger's Shadow", "Urza, Lord High Artificer", 
@@ -54,7 +41,7 @@ def load_commander_list():
         "Isshin, Two Heavens as One", "Sliver Overlord", "Kenrith, the Returned King",
         "Golos, Tireless Pilgrim", "Meria, Scholar of Antiquity", "Jodah, the Unifier",
         "Zhulodok, Void Gorger", "Pantlaza, Sun-Favored", "Voja, Jaws of the Conclave", 
-        "Stella Lee, Wild Card", "Krenko, Tin Street Kingpin", "Tiamat"
+        "Stella Lee, Wild Card", "Krenko, Tin Street Kingpin", "Hamza, Guardian of Arashin"
     ]
     return sorted(fallback_list)
 
@@ -214,7 +201,7 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- BARRA LATERAL (BUSCA LIMPA COM AUTOCOMPLETE) ---
+# --- BARRA LATERAL (BUSCA AFUNILADA E ULTRA LEVE) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -229,19 +216,40 @@ st.sidebar.subheader("Escolher Comandante")
 
 commander_list = load_commander_list()
 
-# Define Atraxa como padrão inicial se existir
-default_idx = 0
-for idx, name in enumerate(commander_list):
-    if "Atraxa, Praetors' Voice" in name:
-        default_idx = idx
-        break
-
-# CAIXA ÚNICA LIMPA: Basta digitar poucas letras (ex: krenko) que o Streamlit filtra a lista
-selected_commander = st.sidebar.selectbox(
-    "Pesquisar Comandante:",
-    options=commander_list,
-    index=default_idx
+# 1. Campo de texto para digitar poucas letras
+search_term = st.sidebar.text_input(
+    "Digite o nome ou parte dele:",
+    placeholder="Ex: hamza, krenko, atraxa...",
+    key="search_commander_input"
 )
+
+# 2. Afunilamento exato por substring em Python (instantâneo e ultra leve)
+if search_term.strip():
+    term = search_term.strip().lower()
+    filtered_list = [c for c in commander_list if term in c.lower()]
+else:
+    filtered_list = commander_list
+
+# 3. Exibir seleção apenas com as cartas filtradas
+selected_commander = None
+if not filtered_list:
+    st.sidebar.warning("Nenhum comandante encontrado.")
+else:
+    # Se nada foi digitado, tenta colocar Atraxa como inicial
+    default_idx = 0
+    if not search_term.strip():
+        for idx, name in enumerate(filtered_list):
+            if "Atraxa, Praetors' Voice" in name:
+                default_idx = idx
+                break
+                
+    label_text = f"Resultado ({len(filtered_list)} encontrado(s)):" if search_term.strip() else "Selecione o Comandante:"
+    selected_commander = st.sidebar.selectbox(
+        label_text,
+        options=filtered_list,
+        index=default_idx if default_idx < len(filtered_list) else 0,
+        key="commander_selectbox"
+    )
 
 if selected_commander:
     commander_data = fetch_scryfall_card(selected_commander)
