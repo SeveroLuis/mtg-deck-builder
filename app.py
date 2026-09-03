@@ -9,7 +9,32 @@ from concurrent.futures import ThreadPoolExecutor
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.7.4 - Triagem, Sinergias e Otimização")
+st.subheader("Protótipo 0.7.5 - Triagem, Sinergias e Otimização")
+
+# --- BUSCA E CACHE DA LISTA COMPLETA DE COMANDANTES DO SCRYFALL ---
+@st.cache_data(ttl=86400)
+def load_commander_list():
+    """Busca a lista completa de nomes de Comandantes no Scryfall para busca instantânea."""
+    headers = {"User-Agent": "MTGCommanderAssistant/1.0", "Accept": "application/json"}
+    try:
+        url = "https://api.scryfall.com/catalog/commander-names"
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            data = res.json().get("data", [])
+            if data:
+                return sorted(data)
+    except Exception:
+        pass
+
+    # Fallback com comandantes populares caso ocorra falha momentânea de rede
+    return sorted([
+        "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
+        "Yuriko, the Tiger's Shadow", "Urza, Lord High Artificer", 
+        "Lathril, Blade of the Elves", "The Ur-Dragon", "Muldrotha, the Gravetide",
+        "Prosper, Tome-Bound", "Nekusar, the Mindrazer", "Korvold, Fae-Cursed King",
+        "Isshin, Two Heavens as One", "Sliver Overlord", "Kenrith, the Returned King",
+        "Golos, Tireless Pilgrim", "Meria, Scholar of Antiquity", "Jodah, the Unifier"
+    ])
 
 # --- TRADUÇÃO E SIMPLIFICAÇÃO DE TIPOS DE CARTAS ---
 def translate_type_line(type_line):
@@ -94,22 +119,6 @@ def compress_image_for_api(pil_image, max_dim=1600):
     buffer.seek(0)
     return Image.open(buffer)
 
-# --- FUNÇÃO AUTOCOMPLETE DO SCRYFALL ---
-@st.cache_data(ttl=3600)
-def autocomplete_scryfall_card(query):
-    """Busca sugestões de nomes de cartas no Scryfall em tempo real."""
-    if not query or len(query.strip()) < 2:
-        return []
-    headers = {"User-Agent": "MTGCommanderAssistant/1.0", "Accept": "application/json"}
-    url = f"https://api.scryfall.com/cards/autocomplete?q={requests.utils.quote(query.strip())}"
-    try:
-        res = requests.get(url, headers=headers, timeout=5)
-        if res.status_code == 200:
-            return res.json().get("data", [])
-    except Exception:
-        pass
-    return []
-
 # --- FUNÇÕES AUXILIARES SCRYFALL & EDHREC ---
 @st.cache_data(ttl=3600)
 def fetch_scryfall_card(card_name):
@@ -183,7 +192,7 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- BARRA LATERAL (SELEÇÃO DE COMANDANTE UNIFICADA) ---
+# --- BARRA LATERAL (SELEÇÃO DE COMANDANTE INSTANTÂNEA) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -196,17 +205,20 @@ st.sidebar.success("API Ativa")
 st.sidebar.markdown("---")
 st.sidebar.subheader("Escolher Comandante")
 
-cmd_search_query = st.sidebar.text_input("Digite o nome do Comandante:", value="Atraxa, Praetors' Voice")
-suggestions = autocomplete_scryfall_card(cmd_search_query)
+commander_list = load_commander_list()
 
-if suggestions:
-    selected_commander = st.sidebar.selectbox(
-        "Sugestões de Comandante:", 
-        options=suggestions, 
-        label_visibility="collapsed"
-    )
-else:
-    selected_commander = cmd_search_query
+default_idx = 0
+for idx, name in enumerate(commander_list):
+    if "Atraxa, Praetors' Voice" in name:
+        default_idx = idx
+        break
+
+selected_commander = st.sidebar.selectbox(
+    "Digite ou selecione o Comandante:",
+    options=commander_list,
+    index=default_idx,
+    help="Ao clicar na caixa e digitar, a lista é filtrada instantaneamente sem precisar apertar ENTER."
+)
 
 if selected_commander:
     commander_data = fetch_scryfall_card(selected_commander)
@@ -215,7 +227,7 @@ if selected_commander:
         st.sidebar.caption(f"Identidade: {', '.join(commander_data['color_identity']) if commander_data['color_identity'] else 'Incolor'}")
         st.session_state['commander_data'] = commander_data
     else:
-        st.sidebar.error("Comandante não encontrado. Digite mais letras.")
+        st.sidebar.error("Comandante não encontrado no Scryfall.")
 
 # --- UPLOAD MULTI-IMAGEM DE FICHÁRIOS ---
 st.write("### Leitura de Coleção e Fichários em Lote")
