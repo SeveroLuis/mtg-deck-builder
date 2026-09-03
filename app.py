@@ -545,11 +545,11 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
         # --- ANÁLISE DE SINERGIAS E UPGRADES (DECK PRONTO VS FICHÁRIO) ---
         if pasted_decklist and pasted_decklist.strip():
             st.markdown("---")
-            st.write("### Análise de Sinergias: Deck Atual vs Cartas do Fichário")
-            st.caption("A IA irá analisar o deck enviado e indicar quais cartas do fichário oferecem sinergia superior ou substituição direta (upgrades).")
+            st.write("### Análise de Sinergias: Deck Atual vs Cartas Escaneadas")
+            st.caption("A ferramenta irá analisar o deck enviado e indicar quais cartas escaneadas oferecem um bom nível de sinergia.")
             
-            if st.button("Analisar Upgrades do Fichário para a Decklist"):
-                with st.spinner("Comparando a lista do seu deck com as cartas do fichário..."):
+            if st.button("Analisar Possível Upgrade"):
+                with st.spinner("Comparando a lista do seu deck com as cartas enviadas..."):
                     try:
                         cmd_name = st.session_state.get('commander_data', {}).get('name', 'Comandante')
                         valid_playables = [c for c in st.session_state['playable_cards'] if c['Valida'] == "Sim"]
@@ -572,11 +572,11 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                         Indique cartas do fichário que devem ENTRAR e qual carta do deck atual deve SAIR para dar lugar:
                         - **Entra (Fichário): [Nome da Carta]** <--- **Sai (Deck Actual): [Nome da Carta]**: [Motivo cirúrgico do upgrade em 1 frase].
 
-                        ### 2. Sinergias de Alto Impacto Encontradas no Fichário
+                        ### 2. Sinergias de Alto Impacto Encontradas
                         Indique combinações fortes entre cartas do Fichário e cartas já presentes no Deck Atual:
                         - **[Carta do Fichário] + [Carta no Deck Atual]**: [Explicação da sinergia em 1 frase].
 
-                        ### 3. Cartas do Fichário que já estão no Deck (Duplicatas)
+                        ### 3. Cartas que já estão no Deck (Duplicatas)
                         Liste rapidamente se há cartas escaneadas que o deck já possui.
                         """
                         res_deck_analysis = call_gemini_api(api_key, deck_vs_binder_prompt)
