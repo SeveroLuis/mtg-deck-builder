@@ -8,7 +8,48 @@ import google.generativeai as genai
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.7.2 - Triagem, Sinergias e Otimização")
+st.subheader("Protótipo 0.7.3 - Triagem, Sinergias e Otimização")
+
+# --- FUNÇÃO ROBUSTA DE CHAMADA À API GEMINI ---
+def call_gemini_api(api_key, prompt, image=None):
+    """Consulta dinamicamente os modelos disponíveis na API Key e executa a chamada com fallback automático."""
+    genai.configure(api_key=api_key)
+    
+    valid_models = []
+    try:
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                valid_models.append(m.name)
+    except Exception:
+        pass
+    
+    fallback_models = [
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-2.0-flash',
+        'gemini-2.5-flash',
+        'gemini-1.5-pro',
+        'gemini-1.5-pro-latest'
+    ]
+    
+    flash_dynamic = [m for m in valid_models if 'flash' in m.lower()]
+    other_dynamic = [m for m in valid_models if m not in flash_dynamic]
+    
+    candidates = flash_dynamic + other_dynamic + [m for m in fallback_models if m not in valid_models]
+    
+    last_error = None
+    for model_name in candidates:
+        try:
+            model = genai.GenerativeModel(model_name)
+            inputs = [prompt, image] if image is not None else [prompt]
+            res = model.generate_content(inputs)
+            if res and hasattr(res, 'text') and res.text:
+                return res.text
+        except Exception as e:
+            last_error = e
+            continue
+            
+    raise RuntimeError(f"Não foi possível obter resposta da API. Último erro: {last_error}")
 
 # --- OTIMIZAÇÃO DE IMAGEM PARA LOTES GRANDES ---
 def compress_image_for_api(pil_image, max_dim=1600):
@@ -162,9 +203,6 @@ if uploaded_files:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        genai.configure(api_key=api_key)
-        candidate_models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
-        
         failed_images = []
         
         for idx, file in enumerate(uploaded_files):
@@ -181,37 +219,25 @@ if uploaded_files:
                 Nome oficial em inglês.
                 """
                 
-                response = None
-                for m in candidate_models:
-                    try:
-                        model = genai.GenerativeModel(m)
-                        response = model.generate_content([prompt, optimized_img])
-                        if response and hasattr(response, 'text') and response.text:
-                            break
-                    except Exception:
-                        continue
+                raw_text = call_gemini_api(api_key, prompt, optimized_img)
                 
-                if response and hasattr(response, 'text') and response.text:
-                    raw_text = response.text.strip()
-                    if "```" in raw_text:
-                        parts = raw_text.split("```")
-                        for part in parts:
-                            clean_part = part.strip()
-                            if clean_part.startswith("json"): clean_part = clean_part[4:].strip()
-                            if clean_part.startswith("["): raw_text = clean_part; break
-                    
-                    cards_list = json.loads(raw_text)
-                    for item in cards_list:
-                        name = item.get("card_name", "").strip()
-                        qty = int(item.get("qty", 1))
-                        if name:
-                            key = name.lower()
-                            if key in all_cards_map:
-                                all_cards_map[key]["qty"] += qty
-                            else:
-                                all_cards_map[key] = {"card_name": name, "qty": qty}
-                else:
-                    failed_images.append(file.name)
+                if "```" in raw_text:
+                    parts = raw_text.split("```")
+                    for part in parts:
+                        clean_part = part.strip()
+                        if clean_part.startswith("json"): clean_part = clean_part[4:].strip()
+                        if clean_part.startswith("["): raw_text = clean_part; break
+                
+                cards_list = json.loads(raw_text)
+                for item in cards_list:
+                    name = item.get("card_name", "").strip()
+                    qty = int(item.get("qty", 1))
+                    if name:
+                        key = name.lower()
+                        if key in all_cards_map:
+                            all_cards_map[key]["qty"] += qty
+                        else:
+                            all_cards_map[key] = {"card_name": name, "qty": qty}
             except Exception:
                 failed_images.append(file.name)
             
@@ -327,26 +353,8 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                         - **[Carta A] + [Carta B]**: [Explicação cirúrgica de no máximo 10 palavras da interação direta].
                         """
                         
-                        genai.configure(api_key=api_key)
-                        candidate_models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
-                        
-                        res = None
-                        last_error = None
-                        
-                        for m in candidate_models:
-                            try:
-                                model = genai.GenerativeModel(m)
-                                res = model.generate_content(prompt)
-                                if res and hasattr(res, 'text') and res.text:
-                                    break
-                            except Exception as e:
-                                last_error = e
-                                continue
-                                
-                        if res and hasattr(res, 'text') and res.text:
-                            st.markdown(res.text)
-                        else:
-                            st.error(f"Não foi possível obter resposta da API no momento. Erro retornado: {last_error if last_error else 'Falha de conexão com a API'}")
+                        res_text = call_gemini_api(api_key, prompt)
+                        st.markdown(res_text)
                         
                         # Caixa de exportação no formato universal
                         st.markdown("### Exportar Lista para Deckbuilder:")
