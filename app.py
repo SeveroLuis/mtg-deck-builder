@@ -409,7 +409,7 @@ if cmd_1_name:
 # --- ENTRADA DE DECK PRONTO (OPCIONAL) ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("Lista de Deck Completo")
-st.sidebar.caption("Cole a lista do seu deck montado para encontrar sinergias e trocas diretas com o fichário.")
+st.sidebar.caption("Cole a lista do seu deck montado para encontrar sinergias e trocas diretas.")
 pasted_decklist = st.sidebar.text_area("Cole a decklist (Ex: 1 Sol Ring):", height=150, placeholder="1 Sol Ring\n1 Command Tower\n1 Rhystic Study...", key="pasted_decklist_input")
 
 # --- ESCANEAMENTO ---
