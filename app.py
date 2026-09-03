@@ -9,12 +9,12 @@ from concurrent.futures import ThreadPoolExecutor
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.9.5 - Seleção Inteligente de Parceiros & Backgrounds")
+st.subheader("Protótipo 0.9.6 - Suporte Multilíngue & Seleção Inteligente de Parceiros")
 
-# --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL ---
+# --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL (COM SUPORTE MULTILÍNGUE) ---
 @st.cache_data(ttl=3600)
 def search_commanders_scryfall(query_term):
-    """Busca em tempo real qualquer comandante ou background no Scryfall que contenha o termo digitado."""
+    """Busca em tempo real qualquer comandante ou background no Scryfall, aceitando termos em qualquer idioma."""
     if not query_term or len(query_term.strip()) < 2:
         return [
             "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
@@ -29,7 +29,7 @@ def search_commanders_scryfall(query_term):
         "Accept": "application/json"
     }
     
-    encoded_query = requests.utils.quote(f'(is:commander or type:background) name:"{query_term.strip()}"')
+    encoded_query = requests.utils.quote(f'lang:any (is:commander or type:background) name:"{query_term.strip()}"')
     url = f"https://api.scryfall.com/cards/search?q={encoded_query}&order=name"
     
     try:
@@ -136,25 +136,41 @@ def compress_image_for_api(pil_image, max_dim=1600):
     buffer.seek(0)
     return Image.open(buffer)
 
-# --- FUNÇÕES AUXILIARES SCRYFALL & EDHREC ---
+# --- FUNÇÕES AUXILIARES SCRYFALL & EDHREC (COM SUPORTE A CARTAS INTERNACIONAIS) ---
 @st.cache_data(ttl=3600)
 def fetch_scryfall_card(card_name):
-    """Busca dados completos de uma carta no Scryfall e detecta se possui capacidade de Parceiro/Background."""
+    """Busca dados completos de uma carta no Scryfall com fallback automático para qualquer idioma."""
     if not card_name or not card_name.strip():
         return {"name": "", "found": False, "color_identity": [], "type_line": "", "image_url": "", "oracle_text": "", "has_partner": False}
     
     headers = {"User-Agent": "MTGCommanderAssistant/1.0", "Accept": "application/json"}
     encoded_name = requests.utils.quote(card_name.strip())
+    
+    # 1. Busca exata em inglês
     url = f"https://api.scryfall.com/cards/named?exact={encoded_name}"
     
     try:
         response = requests.get(url, headers=headers, timeout=5)
+        
+        # 2. Busca aproximada (fuzzy) em inglês
         if response.status_code != 200:
             url = f"https://api.scryfall.com/cards/named?fuzzy={encoded_name}"
             response = requests.get(url, headers=headers, timeout=5)
             
+        # 3. Fallback Multilíngue (Garantia para cartas impressas em Português, Japonês, etc.)
+        if response.status_code != 200:
+            search_url = f"https://api.scryfall.com/cards/search?q=lang:any+\"{encoded_name}\""
+            search_res = requests.get(search_url, headers=headers, timeout=5)
+            if search_res.status_code == 200:
+                s_data = search_res.json().get("data", [])
+                if s_data:
+                    response = search_res
+            
         if response.status_code == 200:
             data = response.json()
+            if "data" in data and isinstance(data["data"], list) and len(data["data"]) > 0:
+                data = data["data"][0]
+                
             image_url = ""
             if "image_uris" in data:
                 image_url = data["image_uris"].get("normal", "")
@@ -170,12 +186,11 @@ def fetch_scryfall_card(card_name):
             partner_keywords = ["partner", "choose a background", "friends forever", "doctor's companion"]
             has_partner = any(kw in keywords for kw in partner_keywords) or any(term in text_lower for term in partner_keywords)
             
-            # Também se for um Background em si
             if "background" in type_line.lower():
                 has_partner = True
                 
             return {
-                "name": data.get("name", card_name),
+                "name": data.get("name", card_name), # Sempre devolve o nome oficial em inglês do Scryfall
                 "color_identity": data.get("color_identity", []),
                 "type_line": type_line,
                 "oracle_text": oracle_text,
@@ -237,8 +252,8 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Seleção de Comandante")
 
 search_term_1 = st.sidebar.text_input(
-    "Pesquisar Comandante:",
-    placeholder="Ex: Atraxa, Tymna, Wilson...",
+    "Pesquisar Comandante (PT/EN):",
+    placeholder="Ex: Atraxa, Tymna, Voz dos Pretores...",
     key="search_cmd_1"
 )
 filtered_1 = search_commanders_scryfall(search_term_1)
@@ -253,12 +268,12 @@ if cmd_1_name:
     display_name = c1_data['name']
     images_to_show = [c1_data['image_url']] if c1_data['image_url'] else []
     
-    # Detecção dinâmica: só abre a seleção do segundo comandante se o primeiro aceitar
+    # Exibe opção do 2º comandante SOMENTE se o 1º aceitar Parceiro/Background
     if c1_data.get("has_partner", False):
         st.sidebar.info("💡 Este comandante permite Parceiro / Background!")
         search_term_2 = st.sidebar.text_input(
-            "Pesquisar Comandante 2 / Background:",
-            placeholder="Ex: Kraum, Shadowheart, Agent of the Iron Throne...",
+            "Pesquisar Comandante 2 / Background (PT/EN):",
+            placeholder="Ex: Kraum, Shadowheart, Agente do Trono...",
             key="search_cmd_2"
         )
         filtered_2 = search_commanders_scryfall(search_term_2)
@@ -288,7 +303,7 @@ if cmd_1_name:
 # --- UPLOAD MULTI-IMAGEM DE FICHÁRIOS ---
 st.write("### Leitura de Coleção e Fichários em Lote")
 uploaded_files = st.file_uploader(
-    "Envie as fotos das páginas do seu fichário (Selecione múltiplas fotos de uma vez):",
+    "Envie as fotos das páginas do seu fichário (Aceita cartas em qualquer idioma):",
     type=["jpg", "jpeg", "png", "webp"],
     accept_multiple_files=True
 )
@@ -314,12 +329,17 @@ if uploaded_files:
                 raw_img = Image.open(file)
                 optimized_img = compress_image_for_api(raw_img)
                 
+                # Prompt com instruções explícitas de suporte multilíngue
                 prompt = """
                 Analise a imagem enviada (página de fichário com cartas de MTG).
+                As cartas podem estar impressas em QUALQUER IDIOMA (Português, Inglês, Japonês, Espanhol, Alemão, Francês, etc.).
+
                 Identifique todas as cartas de MTG visíveis.
+                IMPORTANTE: Converta/Traduza o nome de cada carta para o seu NOME OFICIAL EM INGLÊS.
+                (Exemplo: Se a carta for "Anel Solar", retorne "Sol Ring").
+
                 Responda APENAS com um array JSON válido:
                 [{"card_name": "Sol Ring", "qty": 1}]
-                Nome oficial em inglês.
                 """
                 
                 raw_text = call_gemini_api(api_key, prompt, optimized_img)
