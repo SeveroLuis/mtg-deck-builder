@@ -31,11 +31,25 @@ if uploaded_file:
     
     with col2:
         if st.button("🔍 Escanear e Listar Cartas", type="primary"):
-            with st.spinner("O Gemini está analisando a imagem..."):
+            with st.spinner("Buscando modelo ativo e analisando a imagem..."):
                 try:
-                    # Configura a chave de API
                     genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    
+                    # Auto-detecção de modelos disponíveis na sua chave
+                    all_models = list(genai.list_models())
+                    valid_models = [
+                        m.name for m in all_models 
+                        if 'generateContent' in m.supported_generation_methods
+                    ]
+                    
+                    if not valid_models:
+                        st.error("Nenhum modelo de geração de conteúdo encontrado para sua API Key.")
+                        st.stop()
+                    
+                    # Escolhe preferencialmente um modelo 'flash', ou pega o primeiro ativo
+                    selected_model = next((m for m in valid_models if 'flash' in m.lower()), valid_models[0])
+                    
+                    model = genai.GenerativeModel(selected_model)
                     
                     prompt = """
                     Você é um especialista em Magic: The Gathering (MTG).
@@ -72,7 +86,7 @@ if uploaded_file:
                     cards_data = json.loads(raw_text)
                     
                     st.session_state['detected_cards'] = cards_data
-                    st.success(f"✨ {len(cards_data)} carta(s) identificada(s) com sucesso!")
+                    st.success(f"✨ {len(cards_data)} carta(s) identificada(s) usando o modelo ({selected_model.replace('models/', '')})!")
                     
                 except Exception as e:
                     st.error(f"Erro de processamento: {e}")
