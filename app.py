@@ -9,12 +9,12 @@ from concurrent.futures import ThreadPoolExecutor
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.9.4 - Otimizado (Sem PDF)")
+st.subheader("Protótipo 0.9.5 - Seleção Inteligente de Parceiros & Backgrounds")
 
 # --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL ---
 @st.cache_data(ttl=3600)
 def search_commanders_scryfall(query_term):
-    """Busca em tempo real qualquer comandante no Scryfall que contenha o termo digitado."""
+    """Busca em tempo real qualquer comandante ou background no Scryfall que contenha o termo digitado."""
     if not query_term or len(query_term.strip()) < 2:
         return [
             "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
@@ -29,7 +29,7 @@ def search_commanders_scryfall(query_term):
         "Accept": "application/json"
     }
     
-    encoded_query = requests.utils.quote(f'is:commander name:"{query_term.strip()}"')
+    encoded_query = requests.utils.quote(f'(is:commander or type:background) name:"{query_term.strip()}"')
     url = f"https://api.scryfall.com/cards/search?q={encoded_query}&order=name"
     
     try:
@@ -139,9 +139,9 @@ def compress_image_for_api(pil_image, max_dim=1600):
 # --- FUNÇÕES AUXILIARES SCRYFALL & EDHREC ---
 @st.cache_data(ttl=3600)
 def fetch_scryfall_card(card_name):
-    """Busca dados completos de uma carta no Scryfall."""
+    """Busca dados completos de uma carta no Scryfall e detecta se possui capacidade de Parceiro/Background."""
     if not card_name or not card_name.strip():
-        return {"name": "", "found": False, "color_identity": [], "type_line": "", "image_url": ""}
+        return {"name": "", "found": False, "color_identity": [], "type_line": "", "image_url": "", "oracle_text": "", "has_partner": False}
     
     headers = {"User-Agent": "MTGCommanderAssistant/1.0", "Accept": "application/json"}
     encoded_name = requests.utils.quote(card_name.strip())
@@ -160,19 +160,33 @@ def fetch_scryfall_card(card_name):
                 image_url = data["image_uris"].get("normal", "")
             elif "card_faces" in data and len(data["card_faces"]) > 0 and "image_uris" in data["card_faces"][0]:
                 image_url = data["card_faces"][0]["image_uris"].get("normal", "")
+            
+            oracle_text = data.get("oracle_text", "")
+            type_line = data.get("type_line", "")
+            keywords = [k.lower() for k in data.get("keywords", [])]
+            text_lower = oracle_text.lower()
+            
+            # Detecção de mecânicas de dois comandantes (Partner, Background, Friends Forever, Doctor's Companion)
+            partner_keywords = ["partner", "choose a background", "friends forever", "doctor's companion"]
+            has_partner = any(kw in keywords for kw in partner_keywords) or any(term in text_lower for term in partner_keywords)
+            
+            # Também se for um Background em si
+            if "background" in type_line.lower():
+                has_partner = True
                 
             return {
                 "name": data.get("name", card_name),
                 "color_identity": data.get("color_identity", []),
-                "type_line": data.get("type_line", ""),
-                "oracle_text": data.get("oracle_text", ""),
+                "type_line": type_line,
+                "oracle_text": oracle_text,
                 "image_url": image_url,
-                "found": True
+                "found": True,
+                "has_partner": has_partner
             }
     except Exception:
         pass
         
-    return {"name": card_name, "found": False, "color_identity": [], "type_line": "", "image_url": ""}
+    return {"name": card_name, "found": False, "color_identity": [], "type_line": "", "image_url": "", "oracle_text": "", "has_partner": False}
 
 def is_color_valid(card_colors, commander_colors):
     return set(card_colors).issubset(set(commander_colors))
@@ -209,7 +223,7 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- BARRA LATERAL (CONFIGURAÇÕES E COMANDANTE / DUPLA DE COMANDANTES) ---
+# --- BARRA LATERAL (CONFIGURAÇÕES E SELEÇÃO INTELIGENTE DE COMANDANTES) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -220,27 +234,17 @@ if not api_key:
 
 st.sidebar.success("API Ativa")
 st.sidebar.markdown("---")
-st.sidebar.subheader("Seleção de Comandante(s)")
-
-mode_commanders = st.sidebar.radio("Modo de Comandante:", ["Comandante Único", "Parceiros / Dupla (2 Comandantes)"])
+st.sidebar.subheader("Seleção de Comandante")
 
 search_term_1 = st.sidebar.text_input(
-    "Pesquisar Comandante 1:",
-    placeholder="Ex: Atraxa, Frodo, Tymna...",
+    "Pesquisar Comandante:",
+    placeholder="Ex: Atraxa, Tymna, Wilson...",
     key="search_cmd_1"
 )
 filtered_1 = search_commanders_scryfall(search_term_1)
 cmd_1_name = st.sidebar.selectbox("Comandante Principal:", options=filtered_1, index=0, key="sel_cmd_1") if filtered_1 else None
 
 cmd_2_name = None
-if mode_commanders == "Parceiros / Dupla (2 Comandantes)":
-    search_term_2 = st.sidebar.text_input(
-        "Pesquisar Comandante 2 (Parceiro/Background):",
-        placeholder="Ex: Kraum, Shadowheart...",
-        key="search_cmd_2"
-    )
-    filtered_2 = search_commanders_scryfall(search_term_2)
-    cmd_2_name = st.sidebar.selectbox("Segundo Comandante:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
 
 if cmd_1_name:
     c1_data = fetch_scryfall_card(cmd_1_name)
@@ -249,13 +253,24 @@ if cmd_1_name:
     display_name = c1_data['name']
     images_to_show = [c1_data['image_url']] if c1_data['image_url'] else []
     
-    if cmd_2_name:
-        c2_data = fetch_scryfall_card(cmd_2_name)
-        combined_colors.update(c2_data.get("color_identity", []))
-        display_name += f" & {c2_data['name']}"
-        if c2_data['image_url']:
-            images_to_show.append(c2_data['image_url'])
-            
+    # Detecção dinâmica: só abre a seleção do segundo comandante se o primeiro aceitar
+    if c1_data.get("has_partner", False):
+        st.sidebar.info("💡 Este comandante permite Parceiro / Background!")
+        search_term_2 = st.sidebar.text_input(
+            "Pesquisar Comandante 2 / Background:",
+            placeholder="Ex: Kraum, Shadowheart, Agent of the Iron Throne...",
+            key="search_cmd_2"
+        )
+        filtered_2 = search_commanders_scryfall(search_term_2)
+        cmd_2_name = st.sidebar.selectbox("Segundo Comandante / Background:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
+
+        if cmd_2_name:
+            c2_data = fetch_scryfall_card(cmd_2_name)
+            combined_colors.update(c2_data.get("color_identity", []))
+            display_name += f" & {c2_data['name']}"
+            if c2_data['image_url']:
+                images_to_show.append(c2_data['image_url'])
+                
     final_color_list = sorted(list(combined_colors))
     
     st.session_state['commander_data'] = {
