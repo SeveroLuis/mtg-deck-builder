@@ -406,6 +406,12 @@ if cmd_1_name:
     for img_url in images_to_show:
         st.sidebar.image(img_url, use_container_width=True)
 
+# --- ENTRADA DE DECK PRONTO (OPCIONAL) ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("2. Lista de Deck Atual (Opcional)")
+st.sidebar.caption("Cole a lista do seu deck montado para encontrar sinergias e trocas diretas com o fichário.")
+pasted_decklist = st.sidebar.text_area("Cole a decklist (Ex: 1 Sol Ring):", height=150, placeholder="1 Sol Ring\n1 Command Tower\n1 Rhystic Study...", key="pasted_decklist_input")
+
 # --- ESCANEAMENTO ---
 st.write("### Identificação das cartas")
 uploaded_files = st.file_uploader("Envie fotos das cartas na melhor qualidade possível:", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
@@ -535,3 +541,45 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                     st.text_area("Lista das Cartas Identificadas:", value=export_text, height=120)
                 except Exception as e:
                     st.error(f"Erro: {e}")
+
+        # --- ANÁLISE DE SINERGIAS E UPGRADES (DECK PRONTO VS FICHÁRIO) ---
+        if pasted_decklist and pasted_decklist.strip():
+            st.markdown("---")
+            st.write("### Análise de Sinergias: Deck Atual vs Cartas do Fichário")
+            st.caption("A IA irá analisar o deck enviado e indicar quais cartas do fichário oferecem sinergia superior ou substituição direta (upgrades).")
+            
+            if st.button("Analisar Upgrades do Fichário para a Decklist"):
+                with st.spinner("Comparando a lista do seu deck com as cartas do fichário..."):
+                    try:
+                        cmd_name = st.session_state.get('commander_data', {}).get('name', 'Comandante')
+                        valid_playables = [c for c in st.session_state['playable_cards'] if c['Valida'] == "Sim"]
+                        
+                        fichario_prompt = "\n".join([f"- {c['Carta']} ({c['Tipo']}) | Texto: {c.get('_oracle_text', '')[:80]}" for c in valid_playables])
+                        
+                        deck_vs_binder_prompt = f"""
+                        Você é um especialista em otimização e Power Level no MTG Commander.
+                        Comandante(s): {cmd_name}
+
+                        LISTA DO DECK ATUAL DO JOGADOR:
+                        {pasted_decklist.strip()}
+
+                        CARTAS DISPONÍVEIS NO FICHÁRIO (ESCANEADAS):
+                        {fichario_prompt}
+
+                        Forneça uma análise CIRÚRGICA, DIRETA e SEM INTRODUÇÕES contendo:
+
+                        ### 1. Sugestões de Upgrades e Trocas Diretas
+                        Indique cartas do fichário que devem ENTRAR e qual carta do deck atual deve SAIR para dar lugar:
+                        - **Entra (Fichário): [Nome da Carta]** <--- **Sai (Deck Actual): [Nome da Carta]**: [Motivo cirúrgico do upgrade em 1 frase].
+
+                        ### 2. Sinergias de Alto Impacto Encontradas no Fichário
+                        Indique combinações fortes entre cartas do Fichário e cartas já presentes no Deck Atual:
+                        - **[Carta do Fichário] + [Carta no Deck Atual]**: [Explicação da sinergia em 1 frase].
+
+                        ### 3. Cartas do Fichário que já estão no Deck (Duplicatas)
+                        Liste rapidamente se há cartas escaneadas que o deck já possui.
+                        """
+                        res_deck_analysis = call_gemini_api(api_key, deck_vs_binder_prompt)
+                        st.markdown(res_deck_analysis)
+                    except Exception as e:
+                        st.error(f"Erro na análise de deck vs fichário: {e}")
