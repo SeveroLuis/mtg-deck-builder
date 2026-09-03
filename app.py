@@ -376,8 +376,6 @@ search_term_1 = st.sidebar.text_input("Nome do Comandante:", placeholder="Ex: Ha
 filtered_1 = search_commanders_scryfall(search_term_1)
 cmd_1_name = st.sidebar.selectbox("Selecione o Comandante:", options=filtered_1, index=0, key="sel_cmd_1") if filtered_1 else None
 
-cmd_2_name = None
-
 if cmd_1_name:
     c1_data = fetch_scryfall_card(cmd_1_name)
     combined_colors = set(c1_data.get("color_identity", []))
