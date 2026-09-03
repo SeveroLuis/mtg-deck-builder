@@ -10,7 +10,7 @@ from fpdf import FPDF
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.9.3 - Scanner Robusto e Otimizado")
+st.subheader("Protótipo 0.9.4 - Scanner Sequencial Robusto")
 
 # --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL ---
 @st.cache_data(ttl=3600)
@@ -89,7 +89,6 @@ def call_gemini_api(api_key, prompt, image=None):
     raise RuntimeError(f"Não foi possível obter resposta da API. Último erro: {last_error}")
 
 def compress_image_for_api(pil_image, max_dim=1400):
-    """Mantém resolução ótima para leitura de texto sem perder velocidade."""
     img = pil_image.copy()
     img.thumbnail((max_dim, max_dim))
     buffer = io.BytesIO()
@@ -246,19 +245,20 @@ if cmd_1_name:
     for img_url in images_to_show:
         st.sidebar.image(img_url, use_container_width=True)
 
-# --- UPLOAD MULTI-IMAGEM PARALELO ---
+# --- UPLOAD MULTI-IMAGEM SEQUENCIAL (ROBUSTO) ---
 st.write("### Leitura de Coleção e Fichários em Lote")
 uploaded_files = st.file_uploader("Envie as fotos das páginas do fichário:", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
 
 if uploaded_files:
     st.write(f"**{len(uploaded_files)} foto(s) carregada(s).**")
     
-    if st.button("Escanear Fotos em Alta Velocidade", type="primary"):
+    if st.button("Escanear Fotos", type="primary"):
         all_cards_map = {}
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        def process_single_image(file):
+        for idx, file in enumerate(uploaded_files):
+            status_text.text(f"Analisando imagem {idx+1} de {len(uploaded_files)} ({file.name})...")
             try:
                 raw_img = Image.open(file)
                 optimized_img = compress_image_for_api(raw_img)
@@ -272,7 +272,6 @@ if uploaded_files:
                 """
                 raw_text = call_gemini_api(api_key, prompt, optimized_img)
                 
-                # Limpeza segura do bloco JSON
                 clean_json_str = raw_text.strip()
                 if "```" in clean_json_str:
                     parts = clean_json_str.split("```")
@@ -285,25 +284,18 @@ if uploaded_files:
                             break
                 
                 cards_list = json.loads(clean_json_str)
-                return cards_list
+                for item in cards_list:
+                    name = item.get("card_name", "").strip()
+                    qty = int(item.get("qty", 1))
+                    if name:
+                        key = name.lower()
+                        if key in all_cards_map:
+                            all_cards_map[key]["qty"] += qty
+                        else:
+                            all_cards_map[key] = {"card_name": name, "qty": qty}
             except Exception as e:
-                print(f"Erro ao processar imagem: {e}")
-                return []
-
-        # Processamento paralelo
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            results = list(executor.map(process_single_image, uploaded_files))
+                print(f"Erro ao processar imagem {file.name}: {e}")
             
-        for idx, cards_list in enumerate(results):
-            for item in cards_list:
-                name = item.get("card_name", "").strip()
-                qty = int(item.get("qty", 1))
-                if name:
-                    key = name.lower()
-                    if key in all_cards_map:
-                        all_cards_map[key]["qty"] += qty
-                    else:
-                        all_cards_map[key] = {"card_name": name, "qty": qty}
             progress_bar.progress((idx + 1) / len(uploaded_files))
             
         status_text.empty()
