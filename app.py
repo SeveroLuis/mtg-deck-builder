@@ -5,25 +5,24 @@ from PIL import Image
 import io
 import google.generativeai as genai
 from concurrent.futures import ThreadPoolExecutor
+from fpdf import FPDF
 
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.8.0 - Busca Otimizada + Módulo Upgrade de Deck")
+st.subheader("Protótipo 0.9.0 - Suporte a Múltiplos Comandantes + Exportação PDF & Relatórios")
 
 # --- BUSCA DINÂMICA DE COMANDANTES NO SCRYFALL ---
 @st.cache_data(ttl=3600)
 def search_commanders_scryfall(query_term):
-    """
-    Busca em tempo real qualquer comandante no Scryfall que contenha o termo digitado.
-    Garante suporte total a Universes Beyond, edições recentes e lendárias raras.
-    """
+    """Busca em tempo real qualquer comandante no Scryfall que contenha o termo digitado."""
     if not query_term or len(query_term.strip()) < 2:
         return [
             "Atraxa, Praetors' Voice", "Krenko, Mob Boss", "Edgar Markov", 
             "Yuriko, the Tiger's Shadow", "Urza, Lord High Artificer", 
             "Lathril, Blade of the Elves", "The Ur-Dragon", "Muldrotha, the Gravetide",
-            "Frodo, Sauron's Bane", "Shadowheart, Dark Justiciar", "Hazel of the Rootbloom"
+            "Frodo, Sauron's Bane", "Shadowheart, Dark Justiciar", "Hazel of the Rootbloom",
+            "Tymna the Weaver", "Kraum, Ludevic's Opus"
         ]
 
     headers = {
@@ -211,7 +210,42 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- BARRA LATERAL (BUSCA DINÂMICA UNIVERSAL) ---
+# --- GERADOR DE PDF DO RELATÓRIO ---
+def generate_pdf_report(title_text, content_text):
+    """Gera um PDF limpo e formatado usando FPDF2."""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # Cabeçalho
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "MTG Commander Assistant - Relatorio", ln=True, align="C")
+    pdf.set_font("Helvetica", "I", 10)
+    pdf.cell(0, 6, f"Foco: {title_text}", ln=True, align="C")
+    pdf.ln(10)
+    
+    # Corpo do texto
+    pdf.set_font("Helvetica", "", 10)
+    
+    # Limpeza básica de caracteres especiais markdown para compatibilidade com Latin-1
+    clean_text = content_text.encode('latin-1', 'replace').decode('latin-1')
+    
+    for line in clean_text.split('\n'):
+        # Substituições simples para formatação no PDF
+        line_clean = line.replace('#', '').replace('**', '')
+        if line.startswith("### "):
+            pdf.ln(4)
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.cell(0, 8, line_clean.replace("### ", ""), ln=True)
+            pdf.set_font("Helvetica", "", 10)
+        elif line.startswith("- ") or line.startswith("* "):
+            pdf.multi_cell(0, 6, "  * " + line_clean[2:])
+        else:
+            pdf.multi_cell(0, 6, line_clean)
+            
+    return bytes(pdf.output())
+
+# --- BARRA LATERAL (CONFIGURAÇÕES E COMANDANTE / DUPLA DE COMANDANTES) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -222,36 +256,55 @@ if not api_key:
 
 st.sidebar.success("API Ativa")
 st.sidebar.markdown("---")
-st.sidebar.subheader("Escolher Comandante")
+st.sidebar.subheader("Seleção de Comandante(s)")
 
-search_term = st.sidebar.text_input(
-    "Pesquisar Comandante:",
-    placeholder="Ex: Frodo, Shadowheart, Hazel, Hamza...",
-    key="search_commander_input"
+mode_commanders = st.sidebar.radio("Modo de Comandante:", ["Comandante Único", "Parceiros / Dupla (2 Comandantes)"])
+
+search_term_1 = st.sidebar.text_input(
+    "Pesquisar Comandante 1:",
+    placeholder="Ex: Atraxa, Frodo, Tymna...",
+    key="search_cmd_1"
 )
+filtered_1 = search_commanders_scryfall(search_term_1)
+cmd_1_name = st.sidebar.selectbox("Comandante Principal:", options=filtered_1, index=0, key="sel_cmd_1") if filtered_1 else None
 
-filtered_commanders = search_commanders_scryfall(search_term)
-
-selected_commander = None
-if not filtered_commanders:
-    st.sidebar.warning("Nenhum comandante encontrado no Scryfall.")
-else:
-    label_text = f"Resultados Encontrados ({len(filtered_commanders)}):" if search_term.strip() else "Sugestões Rápidas:"
-    selected_commander = st.sidebar.selectbox(
-        label_text,
-        options=filtered_commanders,
-        index=0,
-        key="commander_selectbox"
+cmd_2_name = None
+if mode_commanders == "Parceiros / Dupla (2 Comandantes)":
+    search_term_2 = st.sidebar.text_input(
+        "Pesquisar Comandante 2 (Parceiro/Background):",
+        placeholder="Ex: Kraum, Shadowheart...",
+        key="search_cmd_2"
     )
+    filtered_2 = search_commanders_scryfall(search_term_2)
+    cmd_2_name = st.sidebar.selectbox("Segundo Comandante:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
 
-if selected_commander:
-    commander_data = fetch_scryfall_card(selected_commander)
-    if commander_data["found"]:
-        st.sidebar.image(commander_data["image_url"], caption=f"Comandante: {commander_data['name']}", use_container_width=True)
-        st.sidebar.caption(f"Identidade: {', '.join(commander_data['color_identity']) if commander_data['color_identity'] else 'Incolor'}")
-        st.session_state['commander_data'] = commander_data
-    else:
-        st.sidebar.error("Comandante não encontrado no Scryfall.")
+if cmd_1_name:
+    c1_data = fetch_scryfall_card(cmd_1_name)
+    combined_colors = set(c1_data.get("color_identity", []))
+    
+    display_name = c1_data['name']
+    images_to_show = [c1_data['image_url']] if c1_data['image_url'] else []
+    
+    if cmd_2_name:
+        c2_data = fetch_scryfall_card(cmd_2_name)
+        combined_colors.update(c2_data.get("color_identity", []))
+        display_name += f" & {c2_data['name']}"
+        if c2_data['image_url']:
+            images_to_show.append(c2_data['image_url'])
+            
+    final_color_list = sorted(list(combined_colors))
+    
+    st.session_state['commander_data'] = {
+        "name": display_name,
+        "color_identity": final_color_list,
+        "found": True
+    }
+    
+    st.sidebar.markdown("---")
+    st.sidebar.subheader(f"Deck: {display_name}")
+    st.sidebar.caption(f"Identidade de Cores Unificada: {', '.join(final_color_list) if final_color_list else 'Incolor'}")
+    for img_url in images_to_show:
+        st.sidebar.image(img_url, use_container_width=True)
 
 # --- UPLOAD MULTI-IMAGEM DE FICHÁRIOS ---
 st.write("### Leitura de Coleção e Fichários em Lote")
@@ -356,8 +409,9 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
     
     if st.button("Validar Coleção no Scryfall e EDHREC"):
         with st.spinner("Buscando dados em paralelo no EDHREC e Scryfall..."):
-            cmd_name = st.session_state.get('commander_data', {}).get('name', '')
-            cmd_colors = st.session_state.get('commander_data', {}).get('color_identity', [])
+            cmd_data = st.session_state.get('commander_data', {})
+            cmd_name = cmd_data.get('name', '').split(" & ")[0] # EDHREC busca melhor pelo comandante principal
+            cmd_colors = cmd_data.get('color_identity', [])
             
             edhrec_db = fetch_edhrec_full_metrics(cmd_name)
             
@@ -426,7 +480,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                         prompt = f"""
                         Você é um analista estatístico de MTG Commander. Seja EXTREMAMENTE OBJETIVO, CIRÚRGICO e DIRETO. Sem introduções, saudações ou dicas de deckbuilding geral.
 
-                        Comandante: {cmd_name}
+                        Comandante(s): {cmd_name}
                         
                         Cartas aproveitáveis da coleção do jogador:
                         {cards_data_prompt}
@@ -438,24 +492,35 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                         | Carta | Tipo | Categoria Funcional | Inclusão (%) [Fonte: EDHREC] | Sinergia (%) [Fonte: EDHREC] | Função no Deck |
 
                         ### Matriz de Sinergias Cruzadas do Fichário (Carta-com-Carta)
-                        Analise especificamente como as cartas escaneadas do jogador interagem ENTRE SI e com o comandante.
+                        Analise especificamente como as cartas escaneadas do jogador interagem ENTRE SI e com o(s) comandante(s).
                         Liste apenas duplas concretas de cartas presentes na coleção do jogador (ex: Carta A + Carta B).
                         Use bullet points curtos:
                         - **[Carta A] + [Carta B]**: [Explicação cirúrgica de no máximo 10 palavras da interação direta].
                         """
                         
                         res_text = call_gemini_api(api_key, prompt)
+                        st.session_state['last_synergy_analysis'] = res_text
                         st.markdown(res_text)
                         
                         st.markdown("### Exportar Lista para Deckbuilder:")
                         all_valid = valid_playables + [c for c in st.session_state['junk_cards'] if c['Valida'] == "Sim"]
-                        export_text = f"1 {cmd_name}\n" + "\n".join([f"1 {c['Carta']}" for c in all_valid])
+                        export_text = f"1 {cmd_name.split(' & ')[0]}\n" + "\n".join([f"1 {c['Carta']}" for c in all_valid])
                         st.text_area("Copiar para Moxfield / ManaBox / Archidekt:", value=export_text, height=140)
                     
                 except Exception as e:
                     st.error(f"Erro no processamento: {e}")
 
-        # --- NOVO MÓDULO: ANÁLISE DE UPGRADE DE DECK PRONTO vs FICHÁRIO ---
+        # Botão de Exportar Relatório de Sinergias em PDF
+        if 'last_synergy_analysis' in st.session_state:
+            pdf_bytes = generate_pdf_report("Analise de Sinergias Cruzadas", st.session_state['last_synergy_analysis'])
+            st.download_button(
+                label="📥 Baixar Relatório de Sinergias (PDF)",
+                data=pdf_bytes,
+                file_name="mtg_sinergias_fichario.pdf",
+                mime="application/pdf"
+            )
+
+        # --- MÓDULO DE UPGRADE DE DECK PRONTO vs FICHÁRIO ---
         st.markdown("---")
         st.write("### Módulo de Upgrade: Deck Pronto vs Fichário")
         st.markdown("Já tem um deck montado? Cole a lista dele abaixo para descobrir **quais cartas do seu fichário sobem de nível o seu deck atual**.")
@@ -484,7 +549,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                         Você é um especialista em otimização e upgrade de decks de MTG Commander.
                         Analise o confronto entre a Lista de Deck Atual do jogador e as Cartas Escaneadas do Fichário.
 
-                        Comandante: {cmd_name}
+                        Comandante(s): {cmd_name}
 
                         LISTA DO DECK ATUAL DO JOGADOR:
                         {user_decklist.strip()}
@@ -506,7 +571,18 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                         """
                         
                         upgrade_res = call_gemini_api(api_key, prompt)
+                        st.session_state['last_upgrade_analysis'] = upgrade_res
                         st.markdown(upgrade_res)
                         
                     except Exception as e:
                         st.error(f"Erro ao processar análise de upgrade: {e}")
+
+        # Botão de Exportar Relatório de Upgrades em PDF
+        if 'last_upgrade_analysis' in st.session_state:
+            pdf_upgrade_bytes = generate_pdf_report("Relatorio de Upgrade de Deck", st.session_state['last_upgrade_analysis'])
+            st.download_button(
+                label="📥 Baixar Relatório de Upgrades (PDF)",
+                data=pdf_upgrade_bytes,
+                file_name="mtg_upgrades_deck.pdf",
+                mime="application/pdf"
+            )
