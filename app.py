@@ -4,11 +4,42 @@ import streamlit as st
 from PIL import Image
 import io
 import google.generativeai as genai
+from concurrent.futures import ThreadPoolExecutor
 
 st.set_page_config(page_title="MTG Commander Assistant", layout="wide")
 
 st.title("MTG Commander Assistant")
-st.subheader("Protótipo 0.7.3 - Triagem, Sinergias e Otimização")
+st.subheader("Protótipo 0.7.4 - Triagem, Sinergias e Otimização")
+
+# --- TRADUÇÃO E SIMPLIFICAÇÃO DE TIPOS DE CARTAS ---
+def translate_type_line(type_line):
+    """Traduz e formata a linha de tipo das cartas para o português."""
+    if not type_line:
+        return "Desconhecido"
+    
+    translations = {
+        "Creature": "Criatura",
+        "Legendary": "Lendário(a)",
+        "Artifact": "Artefato",
+        "Enchantment": "Encantamento",
+        "Instant": "Mágica Instantânea",
+        "Sorcery": "Feitiço",
+        "Land": "Terreno",
+        "Planeswalker": "Planeswalker",
+        "Battle": "Batalha",
+        "Saga": "Saga",
+        "Equipment": "Equipamento",
+        "Aura": "Aura",
+        "Basic": "Básico",
+        "Snow": "Neve",
+        "Kindred": "Tribal",
+        "Tribal": "Tribal"
+    }
+    
+    res = type_line
+    for eng, pt in translations.items():
+        res = res.replace(eng, pt)
+    return res
 
 # --- FUNÇÃO ROBUSTA DE CHAMADA À API GEMINI ---
 def call_gemini_api(api_key, prompt, image=None):
@@ -152,7 +183,7 @@ def fetch_edhrec_full_metrics(commander_name):
         pass
     return edh_db
 
-# --- BARRA LATERAL (AUTOCOMPLETE DE COMANDANTE) ---
+# --- BARRA LATERAL (SELEÇÃO DE COMANDANTE UNIFICADA) ---
 st.sidebar.header("Configurações e Comandante")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password")
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
@@ -165,11 +196,15 @@ st.sidebar.success("API Ativa")
 st.sidebar.markdown("---")
 st.sidebar.subheader("Escolher Comandante")
 
-cmd_search_query = st.sidebar.text_input("Digite o nome (ex: Atraxa, Krenko...):", value="Atraxa")
+cmd_search_query = st.sidebar.text_input("Digite o nome do Comandante:", value="Atraxa, Praetors' Voice")
 suggestions = autocomplete_scryfall_card(cmd_search_query)
 
 if suggestions:
-    selected_commander = st.sidebar.selectbox("Sugestões encontradas no Scryfall:", options=suggestions)
+    selected_commander = st.sidebar.selectbox(
+        "Sugestões de Comandante:", 
+        options=suggestions, 
+        label_visibility="collapsed"
+    )
 else:
     selected_commander = cmd_search_query
 
@@ -251,13 +286,40 @@ if uploaded_files:
             st.warning(f"Atenção: {len(failed_images)} imagem(ns) não puderam ser lidas ({', '.join(failed_images)}). As demais foram processadas.")
         st.success(f"Compilação concluída! {len(compiled_list)} carta(s) única(s) identificadas no total.")
 
+# --- FUNÇÃO AUXILIAR PARA PROCESSAMENTO EM PARALELO ---
+def _process_single_card(item, cmd_colors, edhrec_db):
+    scry = fetch_scryfall_card(item['card_name'])
+    if scry['found']:
+        valid = is_color_valid(scry['color_identity'], cmd_colors)
+        edh_info = edhrec_db.get(scry['name'].lower(), {})
+        
+        raw_syn = edh_info.get("synergy_raw", 0)
+        has_edh_data = edh_info.get("inclusion") is not None
+        
+        translated_type = translate_type_line(scry['type_line'])
+        
+        card_dict = {
+            "Carta": scry['name'],
+            "Qtd": item['qty'],
+            "Tipo": translated_type,
+            "Valida": "Sim" if valid else "Fora da Cor",
+            "Inclusão EDHREC": edh_info.get("inclusion", "Fora do Top EDHREC"),
+            "Sinergia EDHREC": edh_info.get("synergy", "0%"),
+            "Categoria EDHREC": edh_info.get("category", "Geral/Outros"),
+            "_oracle_text": scry['oracle_text']
+        }
+        
+        is_playable = valid and (has_edh_data or raw_syn > 0)
+        return card_dict, is_playable
+    return None, False
+
 # --- VALIDAÇÃO E ABAS "DÁ JOGO" VS "FORA DO RADAR" ---
 if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
     st.markdown("---")
     st.write("### Triagem da Coleção vs Comandante")
     
     if st.button("Validar Coleção no Scryfall e EDHREC"):
-        with st.spinner("Buscando dados estatísticos no EDHREC e Scryfall..."):
+        with st.spinner("Buscando dados em paralelo no EDHREC e Scryfall..."):
             cmd_name = st.session_state.get('commander_data', {}).get('name', '')
             cmd_colors = st.session_state.get('commander_data', {}).get('color_identity', [])
             
@@ -266,31 +328,19 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
             playable_cards = []
             junk_cards = []
             
-            for item in st.session_state['detected_cards']:
-                scry = fetch_scryfall_card(item['card_name'])
-                if scry['found']:
-                    valid = is_color_valid(scry['color_identity'], cmd_colors)
-                    edh_info = edhrec_db.get(scry['name'].lower(), {})
-                    
-                    raw_syn = edh_info.get("synergy_raw", 0)
-                    has_edh_data = edh_info.get("inclusion") is not None
-                    
-                    card_dict = {
-                        "Carta": scry['name'],
-                        "Qtd": item['qty'],
-                        "Valida": "Sim" if valid else "Fora da Cor",
-                        "Inclusão EDHREC": edh_info.get("inclusion", "Fora do Top EDHREC"),
-                        "Sinergia EDHREC": edh_info.get("synergy", "0%"),
-                        "Categoria EDHREC": edh_info.get("category", "Geral/Outros"),
-                        "OracleText": scry['oracle_text']
-                    }
-                    
-                    if not valid:
-                        junk_cards.append(card_dict)
-                    elif has_edh_data or raw_syn > 0:
-                        playable_cards.append(card_dict)
-                    else:
-                        junk_cards.append(card_dict)
+            # Processamento acelerado em paralelo
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [
+                    executor.submit(_process_single_card, item, cmd_colors, edhrec_db)
+                    for item in st.session_state['detected_cards']
+                ]
+                for future in futures:
+                    card_dict, is_playable = future.result()
+                    if card_dict:
+                        if is_playable:
+                            playable_cards.append(card_dict)
+                        else:
+                            junk_cards.append(card_dict)
             
             st.session_state['playable_cards'] = playable_cards
             st.session_state['junk_cards'] = junk_cards
@@ -301,17 +351,24 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
             f"Fora do Radar / Descarte ({len(st.session_state['junk_cards'])} cartas)"
         ])
         
+        # Preparar dataframes omitindo chave interna do OracleText
+        def clean_display_list(card_list):
+            return [
+                {k: v for k, v in c.items() if not k.startswith("_")}
+                for c in card_list
+            ]
+
         with tab1:
             st.markdown("**Cartas com sinergia ou presença confirmada no EDHREC para este comandante:**")
             if st.session_state['playable_cards']:
-                st.dataframe(st.session_state['playable_cards'], use_container_width=True)
+                st.dataframe(clean_display_list(st.session_state['playable_cards']), use_container_width=True)
             else:
                 st.info("Nenhuma carta com sinergia estatística direta encontrada.")
                 
         with tab2:
             st.markdown("**Cartas que cabem na cor, mas não possuem destaque nos dados do EDHREC:**")
             if st.session_state['junk_cards']:
-                st.dataframe(st.session_state['junk_cards'], use_container_width=True)
+                st.dataframe(clean_display_list(st.session_state['junk_cards']), use_container_width=True)
             else:
                 st.info("Nenhuma carta descartável encontrada.")
         
@@ -328,7 +385,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
                         st.warning("Não há cartas válidas e aproveitáveis suficientes para cruzar sinergias.")
                     else:
                         cards_data_prompt = "\n".join([
-                            f"- {c['Carta']} | Categoria: {c['Categoria EDHREC']} | Sinergia EDHREC: {c['Sinergia EDHREC']} | Texto: {c['OracleText'][:80]}"
+                            f"- {c['Carta']} ({c['Tipo']}) | Categoria: {c['Categoria EDHREC']} | Sinergia EDHREC: {c['Sinergia EDHREC']} | Texto: {c.get('_oracle_text', '')[:80]}"
                             for c in valid_playables
                         ])
                         
@@ -344,7 +401,7 @@ if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
 
                         ### Cartas Recomendadas da Coleção (Dados EDHREC)
                         Crie uma tabela Markdown contendo:
-                        | Carta | Categoria Funcional | Inclusão (%) [Fonte: EDHREC] | Sinergia (%) [Fonte: EDHREC] | Função no Deck |
+                        | Carta | Tipo | Categoria Funcional | Inclusão (%) [Fonte: EDHREC] | Sinergia (%) [Fonte: EDHREC] | Função no Deck |
 
                         ### Matriz de Sinergias Cruzadas do Fichário (Carta-com-Carta)
                         Analise especificamente como as cartas escaneadas do jogador interagem ENTRE SI e com o comandante.
