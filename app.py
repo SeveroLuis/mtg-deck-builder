@@ -1,7 +1,7 @@
 import json
 import streamlit as st
 from PIL import Image
-from google import genai
+import google.generativeai as genai
 
 st.set_page_config(page_title="MTG Commander Assistant", page_icon="🃏", layout="wide")
 
@@ -12,7 +12,6 @@ st.subheader("Protótipo 0.2 - Visão de IA para Cartas e Fichários")
 st.sidebar.header("⚙️ Configurações")
 api_key_input = st.sidebar.text_input("Gemini API Key:", type="password", help="Cole sua chave do Google AI Studio aqui")
 
-# Pega a chave da barra lateral ou dos segredos do Streamlit
 api_key = api_key_input or st.secrets.get("GEMINI_API_KEY", "")
 
 if not api_key:
@@ -34,7 +33,10 @@ if uploaded_file:
         if st.button("🔍 Escanear e Listar Cartas", type="primary"):
             with st.spinner("O Gemini está analisando a imagem..."):
                 try:
-                    client = genai.Client(api_key=api_key)
+                    # Configura a chave de API
+                    genai.configure(api_key=api_key)
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    
                     prompt = """
                     Você é um especialista em Magic: The Gathering (MTG).
                     Analise a imagem enviada (pode ser uma carta individual ou uma página de fichário com várias cartas).
@@ -42,7 +44,8 @@ if uploaded_file:
                     
                     Regras:
                     1. Identifique o nome OFICIAL da carta em INGLÊS (mesmo que a carta na foto esteja em português).
-                    2. Responda APENAS com um array JSON com objetos contendo 'card_name' (string) e 'qty' (integer).
+                    2. Responda APENAS com um array JSON válido contendo objetos com 'card_name' (string) e 'qty' (integer).
+                    3. Não escreva nenhuma introdução, explicação ou texto fora do JSON.
                     
                     Exemplo de resposta:
                     [
@@ -51,28 +54,29 @@ if uploaded_file:
                     ]
                     """
                     
-                    response = client.models.generate_content(
-                        model='gemini-2.5-flash',
-                        contents=[image, prompt]
-                    )
+                    response = model.generate_content([prompt, image])
                     
                     raw_text = response.text.strip()
-                    if raw_text.startswith("```json"):
-                        raw_text = raw_text.replace("```json", "", 1)
-                    if raw_text.startswith("```"):
-                        raw_text = raw_text.replace("```", "", 1)
-                    if raw_text.endswith("```"):
-                        raw_text = raw_text[:-3]
                     
-                    cards_data = json.loads(raw_text.strip())
+                    # Remove formatação de código markdown caso venha
+                    if "```" in raw_text:
+                        parts = raw_text.split("```")
+                        for part in parts:
+                            clean_part = part.strip()
+                            if clean_part.startswith("json"):
+                                clean_part = clean_part[4:].strip()
+                            if clean_part.startswith("["):
+                                raw_text = clean_part
+                                break
+                    
+                    cards_data = json.loads(raw_text)
                     
                     st.session_state['detected_cards'] = cards_data
                     st.success(f"✨ {len(cards_data)} carta(s) identificada(s) com sucesso!")
                     
                 except Exception as e:
-                    st.error(f"Erro ao analisar imagem: {e}")
+                    st.error(f"Erro de processamento: {e}")
 
-# Se já tiver cartas detectadas, exibe a tabela
 if 'detected_cards' in st.session_state and st.session_state['detected_cards']:
     st.markdown("---")
     st.write("### 📋 Cartas Detectadas na sua Coleção:")
