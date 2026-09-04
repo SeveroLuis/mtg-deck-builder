@@ -440,7 +440,7 @@ col_scan1, col_scan2 = st.columns([2, 1])
 
 with col_scan1:
     if uploaded_files:
-        if st.button("Escanear Novas Fotos", type="primary"):
+        if st.button("Validar Cartas Enviadas", type="primary"):
             all_cards_map = {c['card_name'].lower(): c for c in st.session_state['detected_cards']}
             progress_bar = st.progress(0)
             status_text = st.empty()
