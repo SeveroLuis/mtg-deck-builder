@@ -645,3 +645,7 @@ if st.session_state['detected_cards']:
                         st.error(f"Erro na geração do relatório: {e}")
 else:
     st.info("Envie e valide as cartas para iniciar as análises.")
+    
+    # --- CRÉDITOS DA PLATAFORMA ---
+st.markdown("---")
+st.markdown("<div style='text-align: center; color: #94a3b8; padding: 20px 0; font-size: 0.9rem;'>Desenvolvido por <strong>SeveroLuis</strong></div>", unsafe_allow_html=True)
