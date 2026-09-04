@@ -377,14 +377,13 @@ def fetch_edhrec_full_metrics(commander_name):
     return edh_db
 
 # --- CABEÇALHO PRINCIPAL ---
-st.title("SHAPER OF COMMANDER")
-st.caption("Otimize suas coleções, descubra sinergias e monte decks perfeitos.")
+st.title("SHAPER OF COMMANDER DECK")
 st.markdown("---")
 
 # ==========================================
 # PASSO 1: SELEÇÃO DO COMANDANTE
 # ==========================================
-st.subheader("1. Seleção do Comandante")
+st.subheader("Seleção do Comandante (OBRIGATÓRIO)")
 
 col_cmd1, col_cmd2 = st.columns([2, 1])
 
