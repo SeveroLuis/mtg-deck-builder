@@ -429,12 +429,12 @@ st.markdown("---")
 # ==========================================
 # PASSO 2: ESCANEAMENTO E GERENCIAMENTO DO FICHÁRIO
 # ==========================================
-st.subheader("ESCANEAMENTO DAS CARTAS")
+st.subheader("LISTAGEM DAS CARTAS")
 
 if 'detected_cards' not in st.session_state:
     st.session_state['detected_cards'] = []
 
-uploaded_files = st.file_uploader("Envie fotos das cartas ou de páginas inteiras do fichário:", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Envie fotos das cartas ou de páginas inteiras do fichário. Tente enviar boas fotos:", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
 
 col_scan1, col_scan2 = st.columns([2, 1])
 
