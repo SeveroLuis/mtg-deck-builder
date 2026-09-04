@@ -513,7 +513,7 @@ st.markdown("---")
 # ==========================================
 # PASSO 4: CENTRAL DE ANÁLISE E GALERIA
 # ==========================================
-st.subheader("Central de Análise e Upgrades")
+st.subheader("CENTRAL DE ANÁLISE E UPGRADES")
 
 def _process_single_card(item, cmd_colors, edhrec_db):
     scry = fetch_scryfall_card(item['card_name'])
@@ -644,4 +644,4 @@ if st.session_state['detected_cards']:
                     except Exception as e:
                         st.error(f"Erro na geração do relatório: {e}")
 else:
-    st.info("Envie e certifique as cartas para desbloquear as análises.")
+    st.info("Envie e valide as cartas para iniciar as análises.")
