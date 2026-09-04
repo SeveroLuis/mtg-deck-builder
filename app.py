@@ -108,6 +108,22 @@ st.markdown("""
         overflow: hidden;
         background-color: rgba(15, 23, 42, 0.8);
     }
+
+    /* FIX PARA INTERAÇÃO DE IMAGENS EM DISPOSITIVOS MÓVEIS */
+    img, [data-testid="stImage"], [data-testid="stImage"] img {
+        -webkit-tap-highlight-color: transparent !important;
+        -webkit-touch-callout: none !important;
+        -webkit-user-select: none !important;
+        user-select: none !important;
+        touch-action: manipulation !important;
+    }
+
+    button[data-testid="StyledFullScreenButton"],
+    button[title="View fullscreen"] {
+        -webkit-tap-highlight-color: transparent !important;
+        touch-action: manipulation !important;
+    }
+    
 </style>
 """, unsafe_allow_html=True)
 
