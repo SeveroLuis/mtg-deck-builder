@@ -400,10 +400,10 @@ with col_cmd1:
         images_to_show = [c1_data['image_url']] if c1_data['image_url'] else []
         
         if c1_data.get("has_partner", False):
-            st.info("Este comandante aceita Parceiro / Background!")
+            st.info("Este comandante aceita Parceiro/Background!")
             search_term_2 = st.text_input("Digite o nome do Parceiro/Background:", placeholder="Ex: Samwise, Haunted One", key="search_cmd_2")
             filtered_2 = search_commanders_scryfall(search_term_2)
-            cmd_2_name = st.selectbox("Selecione o Parceiro:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
+            cmd_2_name = st.selectbox("Selecione na lista:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
 
             if cmd_2_name:
                 c2_data = fetch_scryfall_card(cmd_2_name)
