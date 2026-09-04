@@ -586,7 +586,7 @@ if st.session_state['detected_cards']:
             )
 
         with tab2:
-            st.write("### Cartas Recomendadas do Fichário")
+            st.write("### Cartas Recomendadas")
             playables = st.session_state['playable_cards']
             if playables:
                 cols_per_row = 4
