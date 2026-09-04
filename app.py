@@ -383,7 +383,7 @@ st.markdown("---")
 # ==========================================
 # PASSO 1: SELEÇÃO DO COMANDANTE
 # ==========================================
-st.subheader("Seleção do Comandante (OBRIGATÓRIO)")
+st.subheader("PASSO 1: Seleção do Comandante")
 
 col_cmd1, col_cmd2 = st.columns([2, 1])
 
@@ -429,7 +429,7 @@ st.markdown("---")
 # ==========================================
 # PASSO 2: ESCANEAMENTO E GERENCIAMENTO DO FICHÁRIO
 # ==========================================
-st.subheader("LISTAGEM DAS CARTAS")
+st.subheader("PASSO 2: Listagem das Cartas")
 
 if 'detected_cards' not in st.session_state:
     st.session_state['detected_cards'] = []
@@ -489,7 +489,7 @@ with col_scan2:
     total_cards = sum([c['qty'] for c in st.session_state['detected_cards']])
     st.metric("Total", f"{total_cards} carta(s)")
     if st.session_state['detected_cards']:
-        if st.button("Limpar / Resetar Fichário"):
+        if st.button("RESETAR LISTAGEM"):
             st.session_state['detected_cards'] = []
             st.session_state.pop('playable_cards', None)
             st.session_state.pop('junk_cards', None)
@@ -500,9 +500,9 @@ st.markdown("---")
 # ==========================================
 # PASSO 3: DECKLIST ATUAL (OPCIONAL)
 # ==========================================
-st.subheader("DECKLIST EXISTENTE")
+st.subheader("OPCIONAL: Decklist Existente")
 pasted_decklist = st.text_area(
-    "Cole a lista do seu deck montado para buscar trocas e upgrades diretos:",
+    "Cole a lista do seu deck montado para buscar trocas e upgrades:",
     height=120,
     placeholder="1 Sol Ring\n1 Command Tower\n1 Rhystic Study...",
     key="pasted_decklist_input"
@@ -538,7 +538,7 @@ def _process_single_card(item, cmd_colors, edhrec_db):
     return None, False
 
 if st.session_state['detected_cards']:
-    if st.button("Processar e Analisar Sinergias para este Comandante", type="primary"):
+    if st.button("Analisar Sinergias para este Comandante", type="primary"):
         with st.spinner("Cruzando fichário com dados do EDHREC e regras do Comandante..."):
             cmd_data = st.session_state.get('commander_data', {})
             cmd_name = cmd_data.get('name', '').split(" & ")[0]
@@ -563,7 +563,7 @@ if st.session_state['detected_cards']:
             f"Recomendações ({len(st.session_state['playable_cards'])})",
             f"Galeria Visual",
             f"Fora do Deck ({len(st.session_state['junk_cards'])})",
-            f"Raio-X & Upgrades (IA)"
+            f"Raio-X e Upgrades"
         ])
 
         column_config_spec = {
@@ -610,7 +610,7 @@ if st.session_state['detected_cards']:
             )
 
         with tab4:
-            st.write("### Análise Lógica Determinística com Inteligência Artificial")
+            st.write("### Análise Lógica Determinística")
             
             if st.button("Gerar Relatório Completo de Sinergias"):
                 with st.spinner("Analisando interações no nível de texto das cartas..."):
