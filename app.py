@@ -12,8 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="Shaper of Commander",
-    page_icon="⚔️",
+    page_title="Shaper of Commander Deck",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
