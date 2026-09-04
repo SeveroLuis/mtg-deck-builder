@@ -109,19 +109,27 @@ st.markdown("""
         background-color: rgba(15, 23, 42, 0.8);
     }
 
-    /* FIX PARA INTERAÇÃO DE IMAGENS EM DISPOSITIVOS MÓVEIS */
-    img, [data-testid="stImage"], [data-testid="stImage"] img {
+    /* FIX DEFINITIVO PARA IMPEDIR QUE ABRIR UMA NOVA GUIA AO CLICAR EM IMAGENS */
+    img, 
+    a:has(img),
+    [data-testid="stImage"], 
+    [data-testid="stImage"] img, 
+    [data-testid="stImage"] a,
+    [data-testid="stDataFrame"] img, 
+    [data-testid="stDataFrame"] a,
+    [data-testid="stTable"] img,
+    [data-testid="stTable"] a {
+        pointer-events: none !important;
         -webkit-tap-highlight-color: transparent !important;
         -webkit-touch-callout: none !important;
         -webkit-user-select: none !important;
         user-select: none !important;
-        touch-action: manipulation !important;
     }
 
     button[data-testid="StyledFullScreenButton"],
     button[title="View fullscreen"] {
-        -webkit-tap-highlight-color: transparent !important;
-        touch-action: manipulation !important;
+        display: none !important;
+        pointer-events: none !important;
     }
     
 </style>
@@ -434,7 +442,7 @@ with col_cmd1:
 with col_cmd2:
     if cmd_1_name:
         st.markdown(f"**Deck:** `{display_name}`")
-        st.caption(f"Identidade de Cores: **{', '.join(final_color_list) if final_color_list else 'Incolor'}")
+        st.caption(f"Identidade de Cores: **{', '.join(final_color_list) if final_color_list else 'Incolor'}**")
         img_cols = st.columns(len(images_to_show))
         for idx, img_url in enumerate(images_to_show):
             with img_cols[idx]:
@@ -613,7 +621,7 @@ if st.session_state['detected_cards']:
                         with cols[idx]:
                             if card['Imagem']:
                                 st.image(card['Imagem'], use_container_width=True)
-                            st.caption(f"**\n\nSinergia: `{card['Sinergia EDHREC']}`")
+                            st.caption(f"**Sinergia:** `{card['Sinergia EDHREC']}`")
             else:
                 st.info("Nenhuma carta com sinergia direta encontrada.")
 
@@ -662,6 +670,6 @@ if st.session_state['detected_cards']:
 else:
     st.info("Envie e valide as cartas para iniciar as análises.")
     
-    # --- CRÉDITOS DA PLATAFORMA ---
+# --- CRÉDITOS DA PLATAFORMA ---
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: #94a3b8; padding: 20px 0; font-size: 0.9rem;'>Desenvolvido por <strong>SeveroLuis</strong></div>", unsafe_allow_html=True)
