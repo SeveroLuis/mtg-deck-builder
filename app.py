@@ -538,7 +538,7 @@ def _process_single_card(item, cmd_colors, edhrec_db):
     return None, False
 
 if st.session_state['detected_cards']:
-    if st.button("Analisar Sinergias para este Comandante", type="primary"):
+    if st.button("Analisar Sinergias para o Comandante selecionado", type="primary"):
         with st.spinner("Cruzando fichário com dados do EDHREC e regras do Comandante..."):
             cmd_data = st.session_state.get('commander_data', {})
             cmd_name = cmd_data.get('name', '').split(" & ")[0]
@@ -560,9 +560,9 @@ if st.session_state['detected_cards']:
 
     if 'playable_cards' in st.session_state:
         tab1, tab2, tab3, tab4 = st.tabs([
-            f"Recomendações ({len(st.session_state['playable_cards'])})",
-            f"Galeria Visual",
-            f"Fora do Deck ({len(st.session_state['junk_cards'])})",
+            f"Dá Gameplay ({len(st.session_state['playable_cards'])})",
+            f"Galeria",
+            f"Deixa de Fora ({len(st.session_state['junk_cards'])})",
             f"Raio-X e Upgrades"
         ])
 
@@ -632,10 +632,10 @@ if st.session_state['detected_cards']:
 
                         Responda em Markdown estruturado:
 
-                        ### 1. Matriz de Sinergias Cruzadas (Carta com Carta do Fichário)
+                        ### 1. Sinergias Cruzadas (Cartas Enviadas)
                         - **[Carta A] + [Carta B]**: Explicar a sinergia direta em no máximo 15 palavras.
 
-                        ### 2. Sugestões de Upgrades (Caso Decklist informada)
+                        ### 2. Sugestões de Upgrades (Para Deck Existente)
                         - **Entra (Fichário): [Nome]** <--- **Sai (Deck Actual): [Nome]**: Motivo técnico direto.
                         """
                         
