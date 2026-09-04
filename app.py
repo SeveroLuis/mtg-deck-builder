@@ -538,7 +538,7 @@ def _process_single_card(item, cmd_colors, edhrec_db):
     return None, False
 
 if st.session_state['detected_cards']:
-    if st.button("Analisar Sinergias para o Comandante selecionado", type="primary"):
+    if st.button("Analisar Sinergias para o Comandante Selecionado", type="primary"):
         with st.spinner("Cruzando fichário com dados do EDHREC e regras do Comandante..."):
             cmd_data = st.session_state.get('commander_data', {})
             cmd_name = cmd_data.get('name', '').split(" & ")[0]
