@@ -434,13 +434,13 @@ st.subheader("LISTAGEM DAS CARTAS")
 if 'detected_cards' not in st.session_state:
     st.session_state['detected_cards'] = []
 
-uploaded_files = st.file_uploader("Envie fotos das cartas ou de páginas inteiras do fichário. Tente enviar boas fotos:", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Envie imagens das cartas ou de páginas inteiras do fichário:", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
 
 col_scan1, col_scan2 = st.columns([2, 1])
 
 with col_scan1:
     if uploaded_files:
-        if st.button("Validar Cartas Enviadas", type="primary"):
+        if st.button("Processar Imagens", type="primary"):
             all_cards_map = {c['card_name'].lower(): c for c in st.session_state['detected_cards']}
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -483,7 +483,7 @@ with col_scan1:
             st.session_state['detected_cards'] = list(all_cards_map.values())
             st.session_state.pop('playable_cards', None)
             if failed_images: st.warning(f"{len(failed_images)} imagem(ns) com falha.")
-            st.success("Fotos processadas com sucesso!")
+            st.success("Cartas identificadas com sucesso!")
 
 with col_scan2:
     total_cards = sum([c['qty'] for c in st.session_state['detected_cards']])
