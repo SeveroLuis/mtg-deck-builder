@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="Shaper of Commander Deck",
+    page_title="Shaper of Commander",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -24,16 +24,19 @@ if not api_key:
     st.error("Erro de configuração: A chave GEMINI_API_KEY não foi encontrada nos Secrets do servidor.")
     st.stop()
 
-# --- ESTILIZAÇÃO VISUAL CUSTOMIZADA (TEMA DARK / RESPONSIVO MOBILE) ---
+# --- ESTILIZAÇÃO VISUAL CUSTOMIZADA (IMAGEM DE FUNDO MTG / TEMA DARK RESPONSIVO) ---
 st.markdown("""
 <style>
     /* 1. Ocultar rodapé e marcas nativas mantendo o menu mobile utilizável */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* 2. Fundo geral e tipografia */
+    /* 2. Fundo geral com imagem temática de Magic: The Gathering e camada escura */
     .stApp {
-        background-color: #0b0f19;
+        background-image: linear-gradient(rgba(11, 15, 25, 0.88), rgba(11, 15, 25, 0.88)), url("https://cards.scryfall.io/art_crop/front/b/d/bd8fa327-dd41-4737-8f19-2cf5eb1f7cdd.jpg");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
         color: #e2e8f0;
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
@@ -47,12 +50,13 @@ st.markdown("""
     
     /* 4. Estilo dos Cartões de Etapa (Wizard) */
     .step-card {
-        background-color: #111827;
+        background-color: rgba(17, 24, 39, 0.85);
         border: 1px solid #1f2937;
         border-radius: 12px;
         padding: 20px;
         margin-bottom: 24px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(4px);
     }
     
     /* 5. Botões modernos em azul/roxo degradê */
@@ -75,7 +79,7 @@ st.markdown("""
     /* 6. Abas estilizadas (Tabs) */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
-        background-color: #1e293b;
+        background-color: rgba(30, 41, 59, 0.85);
         padding: 6px;
         border-radius: 10px;
     }
@@ -91,7 +95,7 @@ st.markdown("""
     
     /* 7. Caixas de texto, inputs e uploaders */
     .stTextArea textarea, .stTextInput input {
-        background-color: #0f172a !important;
+        background-color: rgba(15, 23, 42, 0.85) !important;
         color: #f8fafc !important;
         border: 1px solid #334155 !important;
         border-radius: 8px !important;
@@ -102,6 +106,7 @@ st.markdown("""
         border: 1px solid #1f2937;
         border-radius: 8px;
         overflow: hidden;
+        background-color: rgba(15, 23, 42, 0.8);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -229,7 +234,6 @@ def translate_type_line(type_line):
 def call_gemini_api(api_key, prompt, image=None):
     genai.configure(api_key=api_key)
     
-    # Forçar temperatura 0.0 para garantir consistência total nas análises
     generation_config = genai.types.GenerationConfig(
         temperature=0.0
     )
@@ -373,8 +377,8 @@ def fetch_edhrec_full_metrics(commander_name):
     return edh_db
 
 # --- CABEÇALHO PRINCIPAL ---
-st.title("⚔️ SHAPER OF COMMANDER")
-st.caption("Otimize suas coleções, descubra sinergias e monte deks perfeitos.")
+st.title("SHAPER OF COMMANDER")
+st.caption("Otimize suas coleções, descubra sinergias e monte decks perfeitos.")
 st.markdown("---")
 
 # ==========================================
@@ -397,7 +401,7 @@ with col_cmd1:
         images_to_show = [c1_data['image_url']] if c1_data['image_url'] else []
         
         if c1_data.get("has_partner", False):
-            st.info("💡 Este comandante aceita Parceiro / Background!")
+            st.info("Este comandante aceita Parceiro / Background!")
             search_term_2 = st.text_input("Digite o nome do Parceiro/Background:", placeholder="Ex: Samwise, Haunted One", key="search_cmd_2")
             filtered_2 = search_commanders_scryfall(search_term_2)
             cmd_2_name = st.selectbox("Selecione o Parceiro:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
@@ -437,7 +441,7 @@ col_scan1, col_scan2 = st.columns([2, 1])
 
 with col_scan1:
     if uploaded_files:
-        if st.button("📸 Escanear Novas Fotos", type="primary"):
+        if st.button("Escanear Novas Fotos", type="primary"):
             all_cards_map = {c['card_name'].lower(): c for c in st.session_state['detected_cards']}
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -478,7 +482,6 @@ with col_scan1:
                 
             status_text.empty()
             st.session_state['detected_cards'] = list(all_cards_map.values())
-            # Forçar reprocessamento com o novo lote
             st.session_state.pop('playable_cards', None)
             if failed_images: st.warning(f"{len(failed_images)} imagem(ns) com falha.")
             st.success("Fotos processadas com sucesso!")
@@ -487,7 +490,7 @@ with col_scan2:
     total_cards = sum([c['qty'] for c in st.session_state['detected_cards']])
     st.metric("Total no Fichário", f"{total_cards} carta(s)")
     if st.session_state['detected_cards']:
-        if st.button("🗑️ Limpar / Resetar Fichário"):
+        if st.button("Limpar / Resetar Fichário"):
             st.session_state['detected_cards'] = []
             st.session_state.pop('playable_cards', None)
             st.session_state.pop('junk_cards', None)
@@ -536,7 +539,7 @@ def _process_single_card(item, cmd_colors, edhrec_db):
     return None, False
 
 if st.session_state['detected_cards']:
-    if st.button("⚡ Processar e Analisar Sinergias para este Comandante", type="primary"):
+    if st.button("Processar e Analisar Sinergias para este Comandante", type="primary"):
         with st.spinner("Cruzando fichário com dados do EDHREC e regras do Comandante..."):
             cmd_data = st.session_state.get('commander_data', {})
             cmd_name = cmd_data.get('name', '').split(" & ")[0]
@@ -545,7 +548,6 @@ if st.session_state['detected_cards']:
             edhrec_db = fetch_edhrec_full_metrics(cmd_name)
             playable_cards, junk_cards = [], []
             
-            # Usando max_workers=3 para evitar estourar cota por minuto no plano grátis
             with ThreadPoolExecutor(max_workers=3) as executor:
                 futures = [executor.submit(_process_single_card, item, cmd_colors, edhrec_db) for item in st.session_state['detected_cards']]
                 for future in futures:
@@ -559,13 +561,12 @@ if st.session_state['detected_cards']:
 
     if 'playable_cards' in st.session_state:
         tab1, tab2, tab3, tab4 = st.tabs([
-            f"✅ Recomendações ({len(st.session_state['playable_cards'])})",
-            f"🖼️ Galeria Visuall",
-            f"❌ Fora do Deck ({len(st.session_state['junk_cards'])})",
-            f"🤖 Raio-X & Upgrades (IA)"
+            f"Recomendações ({len(st.session_state['playable_cards'])})",
+            f"Galeria Visual",
+            f"Fora do Deck ({len(st.session_state['junk_cards'])})",
+            f"Raio-X & Upgrades (IA)"
         ])
 
-        # Configuração para mostrar miniatura nativa na tabela do Streamlit
         column_config_spec = {
             "Imagem": st.column_config.ImageColumn("Arte", width="small"),
             "Carta": st.column_config.TextColumn("Nome da Carta"),
@@ -597,7 +598,7 @@ if st.session_state['detected_cards']:
                         with cols[idx]:
                             if card['Imagem']:
                                 st.image(card['Imagem'], use_container_width=True)
-                            st.caption(f"**\n\n⭐ Sinergia: `{card['Sinergia EDHREC']}`")
+                            st.caption(f"**\n\nSinergia: `{card['Sinergia EDHREC']}`")
             else:
                 st.info("Nenhuma carta com sinergia direta encontrada.")
 
