@@ -560,7 +560,7 @@ if st.session_state['detected_cards']:
 
     if 'playable_cards' in st.session_state:
         tab1, tab2, tab3, tab4 = st.tabs([
-            f"Dá Gameplay ({len(st.session_state['playable_cards'])})",
+            f"Aqui é Gameplay ({len(st.session_state['playable_cards'])})",
             f"Galeria",
             f"Deixa de Fora ({len(st.session_state['junk_cards'])})",
             f"Raio-X e Upgrades"
