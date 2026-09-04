@@ -400,7 +400,7 @@ with col_cmd1:
         images_to_show = [c1_data['image_url']] if c1_data['image_url'] else []
         
         if c1_data.get("has_partner", False):
-            st.info("Este comandante aceita Parceiro/Background!")
+            st.info("Este comandante aceita Parceiro/Background")
             search_term_2 = st.text_input("Digite o nome do Parceiro/Background:", placeholder="Ex: Samwise, Haunted One", key="search_cmd_2")
             filtered_2 = search_commanders_scryfall(search_term_2)
             cmd_2_name = st.selectbox("Selecione na lista:", options=filtered_2, index=0, key="sel_cmd_2") if filtered_2 else None
@@ -429,12 +429,12 @@ st.markdown("---")
 # ==========================================
 # PASSO 2: ESCANEAMENTO E GERENCIAMENTO DO FICHÁRIO
 # ==========================================
-st.subheader("2. Fichário de Cartas")
+st.subheader("ESCANEAMENTO DAS CARTAS")
 
 if 'detected_cards' not in st.session_state:
     st.session_state['detected_cards'] = []
 
-uploaded_files = st.file_uploader("Envie fotos das cartas do seu fichário:", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Envie fotos das cartas ou de páginas inteiras do fichário:", type=["jpg", "jpeg", "png", "webp"], accept_multiple_files=True)
 
 col_scan1, col_scan2 = st.columns([2, 1])
 
@@ -487,7 +487,7 @@ with col_scan1:
 
 with col_scan2:
     total_cards = sum([c['qty'] for c in st.session_state['detected_cards']])
-    st.metric("Total no Fichário", f"{total_cards} carta(s)")
+    st.metric("Total", f"{total_cards} carta(s)")
     if st.session_state['detected_cards']:
         if st.button("Limpar / Resetar Fichário"):
             st.session_state['detected_cards'] = []
