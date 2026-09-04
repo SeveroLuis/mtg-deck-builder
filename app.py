@@ -500,7 +500,7 @@ st.markdown("---")
 # ==========================================
 # PASSO 3: DECKLIST ATUAL (OPCIONAL)
 # ==========================================
-st.subheader("3. Decklist Atual (Opcional)")
+st.subheader("DECKLIST EXISTENTE")
 pasted_decklist = st.text_area(
     "Cole a lista do seu deck montado para buscar trocas e upgrades diretos:",
     height=120,
@@ -513,7 +513,7 @@ st.markdown("---")
 # ==========================================
 # PASSO 4: CENTRAL DE ANÁLISE E GALERIA
 # ==========================================
-st.subheader("4. Central de Análise e Upgrades")
+st.subheader("Central de Análise e Upgrades")
 
 def _process_single_card(item, cmd_colors, edhrec_db):
     scry = fetch_scryfall_card(item['card_name'])
@@ -644,4 +644,4 @@ if st.session_state['detected_cards']:
                     except Exception as e:
                         st.error(f"Erro na geração do relatório: {e}")
 else:
-    st.info("Envie e escaneie fotos do seu fichário no Passo 2 para desbloquear as análises.")
+    st.info("Envie e certifique as cartas para desbloquear as análises.")
